@@ -25,7 +25,7 @@
   const cat = () => (settings.category === BIKE && bikeOffered() ? BIKE : CAR);
 
   const nativeFetch = window.fetch.bind(window);
-  const defaults = { budget: 200, category: CAR, services: {} };
+  const defaults = { budget: 200, category: CAR, services: {}, seenGuide: false };
   let settings = Object.assign({}, defaults, safeJSON(lsGet(SETTINGS_KEY)) || {});
   if (settings.category !== CAR && settings.category !== BIKE) settings.category = CAR;
   if (!settings.services || typeof settings.services !== 'object') settings.services = {};
@@ -527,7 +527,7 @@
     state.apply = null;
     state.applied = a.target;
     state.resultKey = routeKey(route); // the result now describes the applied route; keep showing it
-    notify('اعمال شد. قیمت جدید رو توی اسنپ ببین.');
+    notify('اعمال شد. حالا برو سر نقطهٔ جدید؛ قیمت تازه توی اسنپه.');
   }
   function cancelApply() { state.apply = null; emit(); }
 
@@ -634,6 +634,11 @@
   .note.e{background:#fdeeee;color:#7f1d1d}
   .lnk{background:none;border:0;color:#15192e;font-size:13px;font-weight:700;padding:4px 0;min-height:32px}
   .ft{margin-top:8px;padding-top:6px;border-top:1px solid #f1f5f9}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .guide .art svg{display:block;width:auto;height:92px;max-width:100%;margin:0 auto 8px}
+  .dots{display:flex;gap:5px}
+  .dots i{width:7px;height:7px;border-radius:50%;background:#d8dce4}
+  .dots i.on{width:18px;border-radius:4px;background:#15192e}
   .spin{width:16px;height:16px;flex:none;border-radius:50%;border:2px solid rgba(21,25,46,.18);border-top-color:#15192e;animation:s .8s linear infinite}
   .pill.good .spin{border-color:rgba(255,255,255,.3);border-top-color:#c5f04a}
   @keyframes s{to{transform:rotate(360deg)}}
@@ -688,7 +693,7 @@
 
   function render() {
     if (!root) return;
-    const html = `<style>${CSS}</style><div class="w">${state.sheet && !state.apply && !state.probe ? panelHTML() : pillHTML()}${probeHTML()}${applyHTML()}${state.toast ? `<div class="toast">${esc(state.toast)}</div>` : ''}</div>`;
+    const html = `<style>${CSS}</style><div class="w">${state.sheet && !state.apply && !state.probe ? panelHTML() : pillHTML()}${probeHTML()}${applyHTML()}${state.toast ? `<div class="toast" role="status">${esc(state.toast)}</div>` : ''}</div>`;
     if (html === lastHTML) return;
     const sc = root.querySelector('.bd'), top = sc ? sc.scrollTop : 0;
     const act = root.activeElement, focusId = act && act.id, caret = act && act.selectionStart;
@@ -713,6 +718,7 @@
       const done = r ? r.requests : 0, total = r && r.planned ? r.planned : 0;
       return { cls: 'good', spin: true, text: `بررسی ${total ? fa(done) + ' از ' + fa(total) : '…'}` };
     }
+    if (state.compat) return { cls: 'bad', text: 'یه‌قدم: نسخهٔ جدید لازمه' };
     if (state.error) return { cls: 'bad', text: 'یه‌قدم: خطا' };
     if (state.applied) return { cls: 'good', text: 'اعمال شد' };
     if (resultFresh()) {
@@ -770,7 +776,10 @@
     const r = state.result, s = sid();
     let h = '';
     const bp = C.priceOf(r.base, s);
+    const age = state.running ? 0 : Math.floor((Date.now() - r.at) / 60000);
     h += `<div class="now">${serviceSwitch(r.base.prices, r.names) || '<span class="muted" style="flex:1">قیمت الان</span>'}<b>${toman(bp)}</b></div>`;
+    if (age >= 5) h += `<div class="note w">این قیمت‌ها مال ${fa(age)} دقیقه پیشه و احتمالاً عوض شده. <button class="lnk" data-a="run">دوباره بگرد</button></div>`;
+    else if (age >= 1) h += `<div class="muted" style="margin-bottom:4px">قیمت‌ها مال ${fa(age)} دقیقه پیش.</div>`;
     if (r.drift && Math.abs(r.drift) >= C.MIN_SAVING) {
       h += `<div class="note w">قیمت اسنپ وسط جستجو ${r.drift > 0 ? 'گرون' : 'ارزون'} شد (${toman(Math.abs(r.drift))}). <button class="lnk" data-a="run">دوباره بگرد</button></div>`;
     }
@@ -789,7 +798,9 @@
     if (cs.length) h += cs.map(cardHTML).join('');
     else if (!state.running) {
       const n = r.origins.length + r.dests.length;
-      h += `<div class="note"><b>همین‌جا بهترینه.</b> ${fa(n)} نقطه تا ${fa(r.budget)} متر بررسی شد؛ هیچ‌کدوم دست‌کم ۱٬۰۰۰ تومان ارزون‌تر نبود.</div>`;
+      const spread = r.origins.concat(r.dests).filter((c) => isFinite(C.priceOf(c, s))).reduce((m, c) => Math.max(m, Math.abs(C.priceOf(c, s) - bp)), 0);
+      const why = spread < 2 * C.MIN_SAVING ? ' این ساعت قیمت نقاط اطراف تقریباً یکیه؛ ساعت‌های شلوغ معمولاً تفاوت بیشتره.' : '';
+      h += `<div class="note"><b>همین‌جا بهترینه.</b> ${fa(n)} نقطه تا ${fa(r.budget)} متر بررسی شد؛ هیچ‌کدوم دست‌کم ۱٬۰۰۰ تومان ارزون‌تر نبود.${why}</div>`;
     }
     return h;
   }
@@ -809,6 +820,23 @@
     return `<div class="note">کمترین پیاده‌روی برای زیر ${toman(cap)}: <b>${fa(best.walk)} متر</b> (${toman(C.priceOf(best, s))}). <button class="lnk" data-a="pick" data-k="${esc(best.id)}">نشونم بده</button></div>`;
   }
 
+  // First-run guide: three steps, each with a small drawing made of the panel's own parts.
+  const GUIDE = [
+    { t: 'مسیرت رو توی اسنپ انتخاب کن', d: 'وقتی قیمت اومد، روی «ارزون‌ترش کن» پایین نقشه بزن.',
+      art: `<svg viewBox="0 0 240 110" direction="ltr" aria-hidden="true"><rect width="240" height="110" rx="12" fill="#eef0ea"/><path d="M0 36H240M0 74H240M70 0V110M170 0V110" stroke="#fff" stroke-width="9"/><path d="M40 92V74H70V36H160" fill="none" stroke="#4f6bed" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="40" cy="92" r="6" fill="#15192e"/><circle cx="160" cy="36" r="6" fill="#15192e"/><rect x="104" y="56" width="124" height="28" rx="14" fill="#fff" stroke="#15192e" stroke-width="1.5"/><text x="166" y="75" font-size="12" font-weight="700" text-anchor="middle" fill="#15192e" font-family="${FONT}">ارزون‌ترش کن</text></svg>` },
+    { t: 'بگو تا کجا پیاده میای', d: 'چند ثانیه بعد چند پیشنهاد می‌بینی: چقدر ارزون‌تر، چند متر پیاده، کجا.',
+      art: `<svg viewBox="0 0 240 110" direction="ltr" aria-hidden="true"><rect width="240" height="110" rx="12" fill="#f4f6f9"/>${[0, 1, 2].map((i) => `<rect x="${16 + i * 72}" y="20" width="64" height="30" rx="9" fill="${i === 1 ? '#f6fbe6' : '#fff'}" stroke="${i === 1 ? '#15192e' : '#d8dce4'}" stroke-width="1.5"/><text x="${48 + i * 72}" y="40" font-size="12" font-weight="700" text-anchor="middle" fill="#15192e" font-family="${FONT}">${fa(300 - i * 100)} متر</text>`).join('')}<rect x="16" y="62" width="208" height="32" rx="9" fill="#15192e"/><text x="120" y="83" font-size="13" font-weight="700" text-anchor="middle" fill="#fff" font-family="${FONT}">پیدا کن</text></svg>` },
+    { t: 'اعمال کن و برو سر نقطهٔ جدید', d: 'پین خودش می‌ره اونجا؛ توی اسنپ تأییدش کن. «نمی‌رم» یعنی اون نقطه رو نشون نده.',
+      art: `<svg viewBox="0 0 240 110" direction="ltr" aria-hidden="true"><rect width="240" height="110" rx="12" fill="#f4f6f9"/><rect x="12" y="12" width="216" height="86" rx="12" fill="#fafdf1" stroke="#15192e" stroke-width="1.5"/><circle cx="210" cy="32" r="9" fill="#c5f04a" stroke="#15192e" stroke-width="1.5"/><text x="194" y="37" font-size="13" font-weight="800" text-anchor="end" fill="#3f6212" font-family="${FONT}">۳۲٬۰۰۰ تومان ارزون‌تر</text><text x="194" y="56" font-size="10.5" text-anchor="end" fill="#334155" font-family="${FONT}">اون‌ور خیابون، ۳۵ متر پیاده</text><rect x="70" y="66" width="86" height="24" rx="7" fill="#15192e"/><text x="113" y="82" font-size="11" font-weight="700" text-anchor="middle" fill="#fff" font-family="${FONT}">اعمال در اسنپ</text><rect x="24" y="66" width="40" height="24" rx="7" fill="#e8ebf0"/><text x="44" y="82" font-size="10.5" font-weight="700" text-anchor="middle" fill="#475569" font-family="${FONT}">نمی‌رم</text></svg>` },
+  ];
+  function guideHTML() {
+    const i = state.guide, g = GUIDE[i], last = i === GUIDE.length - 1;
+    return `<div class="guide"><div class="art">${g.art}</div>
+      <div class="q">${g.t}</div><div class="muted">${g.d}</div>
+      <div class="row" style="margin-top:12px"><span class="dots">${GUIDE.map((_, j) => `<i class="${j === i ? 'on' : ''}"></i>`).join('')}</span>
+        <span class="row" style="gap:6px"><button class="lnk" data-a="guideSkip">${last ? '' : 'رد کن'}</button><button class="go" data-a="guideNext">${last ? 'شروع' : 'بعدی'}</button></span></div></div>`;
+  }
+
   function panelHTML() {
     const r = state.result, st = status();
     let h = `<div class="pn"><div class="hd">${LOGO}<b>یه‌قدم</b><span class="sp"></span>
@@ -818,11 +846,13 @@
       h += `<div class="bar"><i style="transform:scaleX(${(done / Math.max(1, total)).toFixed(3)})"></i></div>`;
     }
     h += '<div class="bd">';
+    if (state.guide != null) return h + guideHTML() + '</div></div>';
+    if (state.compat) h += `<div class="note e">${ERR.changed}</div>`;
     if (!authHeader()) h += `<div class="note w">اول وارد اکانت اسنپ شو.</div>`;
     else if (!state.route) h += `<div class="note w">مبدا و مقصد رو توی اسنپ انتخاب و تأیید کن تا قیمت بیاد.</div>`;
     if (state.running) {
       const done = r ? r.requests : 0, total = r && r.planned ? r.planned : 23;
-      h += `<div class="muted">در حال بررسی ${fa(done)} از ${fa(total)} نقطه، تا ${fa(settings.budget)} متر پیاده…</div>`;
+      h += `<div class="muted" role="status" aria-live="polite">در حال بررسی ${fa(done)} از ${fa(total)} نقطه، تا ${fa(settings.budget)} متر پیاده…</div>`;
       if (r && r.base) h += resultHTML();
       h += `<button class="btn ghost" data-a="stop">توقف</button>`;
     } else if (state.error) {
@@ -831,12 +861,14 @@
       h += setupHTML();
     } else if (r && r.base && !state.setup) {
       h += resultHTML();
-      h += `<div class="ft"><button class="lnk" data-a="setup">جستجوی دوباره</button>
+      h += `<div class="ft"><div class="row"><button class="lnk" data-a="setup">جستجوی دوباره</button><button class="lnk" data-a="guide">راهنما</button></div>
         <div class="muted">برای قیمت یک نقطهٔ دلخواه، روی نقشه انگشتت رو نگه دار.</div></div>`;
     } else if (state.route) {
       h += setupHTML();
     }
-    if (!(r && r.base && !state.setup && !state.running)) h += `<div class="muted ft">برنامهٔ غیررسمی؛ ربطی به اسنپ نداره.</div>`;
+    if (!(r && r.base && !state.setup && !state.running)) {
+      h += `<div class="ft row"><span class="muted">برنامهٔ غیررسمی؛ ربطی به اسنپ نداره.</span><button class="lnk" data-a="guide">راهنما</button></div>`;
+    }
     h += '</div></div>';
     return h;
   }
@@ -899,9 +931,15 @@
     const t = e.target.closest('[data-a]');
     if (!t) return;
     const a = t.dataset.a, k = t.dataset.k;
-    if (a === 'open') { state.sheet = true; emit(); }
+    if (a === 'open') { state.sheet = true; if (!settings.seenGuide && state.guide == null) state.guide = 0; emit(); }
     else if (a === 'close') { state.sheet = false; emit(); }
     else if (a === 'stop') state.cancel = true;
+    else if (a === 'guide') { state.guide = 0; emit(); }
+    else if (a === 'guideNext') {
+      if (state.guide < GUIDE.length - 1) state.guide++;
+      else { state.guide = null; settings.seenGuide = true; saveSettings(); }
+      emit();
+    } else if (a === 'guideSkip') { state.guide = null; settings.seenGuide = true; saveSettings(); emit(); }
     else if (a === 'run') startRun();
     else if (a === 'setup') { state.setup = true; emit(); }
     else if (a === 'budget') { settings.budget = +k; saveSettings(); emit(); }
@@ -945,10 +983,20 @@
   };
 
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
+  // If the site changes its markers or its price requests, the route is never confirmed. Say so plainly instead of
+  // offering a search that cannot work.
+  function checkCompat() {
+    const last = recent[recent.length - 1];
+    const markers = document.querySelectorAll('.mapboxgl-marker').length;
+    const stuck = !!last && !state.route && state.map && markers >= 2 && Date.now() - last.t > 20000;
+    if (stuck !== !!state.compat) { state.compat = stuck; emit(); }
+  }
+
   setInterval(() => {
     if (!host) mount();
     else if (!document.contains(host) && document.body) document.body.appendChild(host);
     syncRoute(); // markers settle after Snapp's request returns
+    checkCompat();
     layout();
     emit();
   }, 1500);

@@ -3,10 +3,8 @@ package app.yeghadam;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -51,7 +49,10 @@ public class MainActivity extends Activity {
         styleSystemBars();
 
         script = readAsset("yeghadam.js");
-        WebView.setWebContentsDebuggingEnabled(true);
+        // Remote inspection exposes the whole Snapp session over USB: debug builds only.
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
 
         web = new WebView(this);
         web.setBackgroundColor(Color.WHITE);
@@ -253,36 +254,17 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Small helpers exposed to the injected script as window.YeghadamNative. */
+    /**
+     * Helpers exposed to the page as window.YeghadamNative. Every script on the page can call these, including
+     * third-party ones the site loads, so the bridge stays limited to harmless calls.
+     */
     private class Bridge {
-        @JavascriptInterface
-        public void copy(final String text) {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    ClipboardManager cb = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    if (cb != null) cb.setPrimaryClip(ClipData.newPlainText("location", text));
-                    Toast.makeText(MainActivity.this, "کپی شد", Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-
         @JavascriptInterface
         public void toast(final String text) {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
                     Toast.makeText(MainActivity.this, text, Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public void open(final String url) {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    launch(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                 }
             });
         }
