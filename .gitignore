@@ -1,0 +1,21 @@
+# build output
+dist/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/yeghadam.js
+
+# signing keys never belong in the repository
+*.p12
+*.jks
+*.keystore
+
+# tooling
+node_modules/
+__pycache__/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

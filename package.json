@@ -1,0 +1,15 @@
+{
+  "name": "yeghadam",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Finds a cheaper pickup or drop-off point a few steps away in the Snapp passenger web app.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "icons": "python scripts/make-icons.py"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
