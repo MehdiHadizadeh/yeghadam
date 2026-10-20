@@ -1,6 +1,6 @@
 {
   "name": "yeghadam",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "Finds a cheaper pickup or drop-off point a few steps away in the Snapp passenger web app.",
   "license": "MIT",

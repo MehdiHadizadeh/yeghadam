@@ -547,7 +547,6 @@
     const street = c.street || ROAD[c.cls] || 'خیابان';
     return c.crossed ? `اون‌ور ${street}` : `${street}، ${c.dir}`;
   }
-  const TAG = { nearest: 'نزدیک‌ترین', balanced: 'متعادل', cheapest: 'ارزان‌ترین', best: 'بهترین' };
   const ERR = {
     auth: 'وارد اکانت اسنپ نیستی یا نشستت تموم شده. یک بار خارج و دوباره وارد شو.',
     rate: 'اسنپ موقتاً استعلام‌ها رو محدود کرده. چند دقیقه بعد دوباره امتحان کن.',
@@ -570,27 +569,33 @@
   // brand mark: a ring (you are here) and, one step over, a lime dot (cheaper). Same drawing as the app icon.
   const LOGO = `<svg class="lg" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#15192e"/><circle cx="7.9" cy="15.8" r="2.6" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="15.9" cy="8.7" r="4.6" fill="#c5f04a"/></svg>`;
 
+  const ICON = {
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    collapse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>',
+  };
+
   const CSS = `
   :host{all:initial}
   *{box-sizing:border-box;font-family:${FONT};-webkit-tap-highlight-color:transparent;margin:0}
   .w{direction:rtl;color:#0f172a;font-size:14px;line-height:1.65;font-family:${FONT}}
   button{font:inherit;cursor:pointer}
   .lg{width:22px;height:22px;flex:none;display:block}
-  .pn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 64px);left:12px;z-index:2147483000;width:min(380px,calc(100vw - 24px));
-    background:#fff;border-radius:18px;box-shadow:0 10px 30px rgba(2,6,23,.18),0 1px 3px rgba(2,6,23,.12);overflow:hidden;
-    display:flex;flex-direction:column;max-height:calc(50vh - 80px - env(safe-area-inset-top,0px));min-height:180px}
-  /* Snapp's bottom sheet (prices, ride button) starts at half the screen on desktop, ~45% on phones: stay above it */
-  @media(max-width:640px){.pn{max-height:calc(42vh - 64px - env(safe-area-inset-top,0px));min-height:160px}}
-  .pill{position:fixed;top:calc(env(safe-area-inset-top,0px) + 64px);left:12px;z-index:2147483000;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);
+  /* --sheet is the top edge of Snapp's bottom sheet (prices, ride button), measured at run time: stay above it */
+  .pn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 60px);left:10px;z-index:2147483000;width:min(380px,calc(100vw - 20px));
+    background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(2,6,23,.18),0 1px 3px rgba(2,6,23,.12);overflow:hidden;
+    display:flex;flex-direction:column;max-height:calc(var(--sheet,50vh) - 70px - env(safe-area-inset-top,0px));min-height:150px}
+  .pill{position:fixed;top:calc(var(--sheet,50vh) - 54px);left:10px;z-index:2147483000;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 20px);
     background:#fff;color:#0f172a;border:0;border-radius:999px;padding:7px 14px 7px 8px;font-size:13.5px;font-weight:700;box-shadow:0 6px 18px rgba(2,6,23,.18)}
   .pill.good{background:#15192e;color:#fff}
   .pill.good .lg rect{fill:#2a3050}
   .pill.bad{background:#b91c1c;color:#fff}
-  .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #f1f5f9}
-  .hd b{font-size:15px}
+  .hd{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 10px;border-bottom:1px solid #f1f5f9}
+  .hd b{font-size:14.5px}
   .hd .sp{flex:1}
-  .ic{border:0;background:#f1f5f9;border-radius:10px;min-width:36px;height:36px;padding:0 10px;font-size:13px;font-weight:700;color:#334155}
-  .bd{flex:1;min-height:0;overflow:auto;padding:10px 12px 12px;overscroll-behavior:contain}
+  .ic{display:grid;place-items:center;border:0;background:transparent;border-radius:10px;width:36px;height:36px;color:#475569}
+  .ic:hover{background:#f1f5f9}
+  .ic svg,.x svg{width:18px;height:18px}
+  .bd{flex:1;min-height:0;overflow:auto;padding:8px 10px 10px;overscroll-behavior:contain;scrollbar-width:thin}
   .muted{color:#64748b;font-size:12.5px}
   .q{font-weight:700;margin:2px 0 8px}
   .seg{display:flex;gap:6px}
@@ -605,33 +610,32 @@
   .btn:disabled{background:#94a3b8}
   .bar{height:4px;background:#e2e8f0;overflow:hidden}
   .bar i{display:block;height:100%;width:100%;background:#15192e;transform-origin:right;transition:transform .25s ease-out}
-  .now{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-  .now b{font-size:15px}
-  .card{border:1.5px solid #e2e8f0;border-radius:14px;padding:10px 12px;margin-top:8px;cursor:pointer}
+  .now{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .now .seg{flex:1}
+  .now b{font-size:14px;white-space:nowrap}
+  .card{border:1.5px solid #e2e8f0;border-radius:12px;padding:7px 6px 7px 10px;margin-top:6px;cursor:pointer}
   .card.sel{border-color:#15192e;background:#fafdf1}
   .r1{display:flex;align-items:center;gap:8px}
+  .x{display:grid;place-items:center;border:0;background:transparent;border-radius:8px;width:30px;height:30px;color:#94a3b8;flex:none}
+  .x:hover{background:#f1f5f9;color:#475569}
   .n{width:24px;height:24px;flex:none;border-radius:50%;border:2px solid #15192e;color:#15192e;background:#fff;font-weight:800;font-size:13px;line-height:20px;text-align:center}
   .card.sel .n{background:#c5f04a;color:#15192e}
-  .sv{font-size:17px;font-weight:800;color:#3f6212;flex:1}
-  .tag{font-size:11.5px;font-weight:700;color:#475569;background:#f1f5f9;border-radius:7px;padding:1px 8px}
-  .r2{font-size:13px;margin-top:4px;color:#334155}
+  .sv{font-size:15.5px;font-weight:800;color:#3f6212;flex:1;white-space:nowrap}
+  .r2{font-size:12.5px;margin-top:2px;color:#475569;padding-inline-start:32px}
   .r2 b{color:#0f172a}
   .k{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:0 6px;margin-inline-end:4px}
   .k.origin{background:#e0f2fe;color:#075985}.k.dest{background:#fef3c7;color:#92400e}.k.both{background:#ede9fe;color:#5b21b6}
-  .r3{display:flex;align-items:center;gap:8px;margin-top:8px}
-  .pr{flex:1;font-size:13px;color:#334155}
-  .pr s{color:#94a3b8;margin-inline-start:4px}
-  .go{border:0;border-radius:10px;min-height:36px;padding:0 14px;font-size:13.5px;font-weight:700;background:#15192e;color:#fff}
+  .go{border:0;border-radius:10px;min-height:32px;padding:0 12px;font-size:13px;font-weight:700;background:#15192e;color:#fff;flex:none}
   .nb{border:0;border-radius:10px;min-height:36px;padding:0 10px;font-size:13px;font-weight:700;background:#f1f5f9;color:#475569}
   .note{background:#f4f7ec;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px;color:#1f2a10}
   .note.w{background:#fff7e6;color:#713f12}
   .note.e{background:#fdeeee;color:#7f1d1d}
   .lnk{background:none;border:0;color:#15192e;font-size:13px;font-weight:700;padding:4px 0;min-height:32px}
-  .ft{margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9}
+  .ft{margin-top:8px;padding-top:6px;border-top:1px solid #f1f5f9}
   .spin{width:16px;height:16px;flex:none;border-radius:50%;border:2px solid rgba(21,25,46,.18);border-top-color:#15192e;animation:s .8s linear infinite}
   .pill.good .spin{border-color:rgba(255,255,255,.3);border-top-color:#c5f04a}
   @keyframes s{to{transform:rotate(360deg)}}
-  .ab{position:fixed;left:12px;top:calc(env(safe-area-inset-top,0px) + 64px);z-index:2147483003;width:min(380px,calc(100vw - 24px));background:#0f172a;color:#fff;border-radius:16px;
+  .ab{position:fixed;left:10px;top:calc(env(safe-area-inset-top,0px) + 60px);z-index:2147483003;width:min(380px,calc(100vw - 20px));background:#0f172a;color:#fff;border-radius:16px;
     padding:12px 14px;box-shadow:0 10px 30px rgba(2,6,23,.35);font-size:14px}
   .ab .st{font-size:12px;color:#c5f04a;font-weight:700}
   .ab .acts{display:flex;gap:8px;margin-top:10px}
@@ -651,11 +655,34 @@
     root = host.attachShadow({ mode: 'open' });
     document.body.appendChild(host);
     root.addEventListener('click', onClick);
+    layout();
     root.addEventListener('input', onInput);
     root.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'cap') { e.preventDefault(); startRun(); } });
     render();
   }
   const emit = () => { try { render(); } catch (e) { console.error('[yeghadam]', e); } };
+
+  // Top edge of Snapp's bottom sheet: the outermost full-width box under the bottom of the screen that starts below
+  // the top fifth of it. Falls back to half the screen.
+  function sheetTop() {
+    const w = window.innerWidth, h = window.innerHeight;
+    let top = 0;
+    for (let el = document.elementFromPoint(w / 2, h - 4); el && el !== document.body; el = el.parentElement) {
+      if (el === host) return h / 2;
+      const r = el.getBoundingClientRect();
+      if (r.width >= w * 0.9 && r.top >= h * 0.2 && r.top < h - 60 && (!top || r.top < top)) top = r.top;
+    }
+    return top || h / 2;
+  }
+  let lastSheet = 0;
+  function layout() {
+    if (!host) return;
+    const t = Math.round(sheetTop());
+    if (Math.abs(t - lastSheet) < 2) return;
+    lastSheet = t;
+    host.style.setProperty('--sheet', t + 'px');
+  }
+  window.addEventListener('resize', () => layout());
 
   function render() {
     if (!root) return;
@@ -707,13 +734,14 @@
   function serviceSwitch(prices, names) {
     const ids = Object.keys(prices || {}).map(Number);
     if (ids.length < 2) return '';
-    return `<div class="seg sm" style="margin-bottom:8px">${ids.map((id) => `<button class="${sid() === id ? 'on' : ''}" data-a="svc" data-k="${id}">${esc(names[id] || id)}</button>`).join('')}</div>`;
+    return `<div class="seg sm">${ids.map((id) => `<button class="${sid() === id ? 'on' : ''}" data-a="svc" data-k="${id}">${esc(names[id] || id)}</button>`).join('')}</div>`;
   }
 
   function setupHTML() {
     const offered = bikeOffered() ? (state.snapp.categories || []).filter((c) => c.id === CAR || c.id === BIKE) : [];
     const cats = offered.length > 1 ? `<div class="seg sm" style="margin-bottom:8px">${offered.map((c) => `<button class="${cat() === c.id ? 'on' : ''}" data-a="cat" data-k="${c.id}">${esc(c.name)}</button>`).join('')}</div>` : '';
-    const svc = cat() === CAR && state.snapp ? serviceSwitch(state.snapp.prices, state.snapp.names) : '';
+    const sw = cat() === CAR && state.snapp ? serviceSwitch(state.snapp.prices, state.snapp.names) : '';
+    const svc = sw ? `<div style="margin-bottom:8px">${sw}</div>` : '';
     return `${cats}${svc}<div class="q">امروز تا کجا حاضری پیاده بری؟</div>
       <div class="seg">${BUDGETS.map((b) => `<button class="${settings.budget === b ? 'on' : ''}" data-a="budget" data-k="${b}">${fa(b)} متر</button>`).join('')}</div>
       <div class="cap"><input id="cap" inputmode="numeric" autocomplete="off" placeholder="تا چند حاضری بدی؟ (اختیاری، مثلاً ۱۶۰)" value="${esc(state.capText)}"><span class="muted">هزار تومان</span></div>
@@ -729,10 +757,9 @@
   function cardHTML(k, i) {
     const c = k.c, sel = c === state.selected ? ' sel' : '';
     return `<div class="card${sel}" data-a="pick" data-k="${esc(c.id)}">
-      <div class="r1"><span class="n">${fa(i + 1)}</span><span class="sv">${toman(k.saving)} ارزون‌تر</span><span class="tag">${TAG[k.tag]}</span></div>
-      <div class="r2"><span class="k ${c.kind}">${KIND[c.kind]}</span>${esc(placeShort(c))}، <b>${fa(c.walk)} متر</b> پیاده</div>
-      <div class="r3"><span class="pr">${toman(k.price)}<s>${fa(Math.round(k.base / 10))}</s></span>
-        <button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال در اسنپ</button><button class="nb" data-a="dismiss" data-k="${esc(c.id)}" title="این نقطه رو نشون نده">نمی‌رم</button></div>
+      <div class="r1"><span class="n">${fa(i + 1)}</span><span class="sv">${toman(k.saving)} ارزون‌تر</span>
+        <button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال</button><button class="x" data-a="dismiss" data-k="${esc(c.id)}" title="اینجا نمی‌رم" aria-label="اینجا نمی‌رم">${ICON.close}</button></div>
+      <div class="r2"><span class="k ${c.kind}">${KIND[c.kind]}</span>${esc(placeShort(c))}، <b>${fa(c.walk)} متر</b> پیاده، ${toman(k.price)}</div>
     </div>`;
   }
 
@@ -740,8 +767,7 @@
     const r = state.result, s = sid();
     let h = '';
     const bp = C.priceOf(r.base, s);
-    h += serviceSwitch(r.base.prices, r.names);
-    h += `<div class="now"><span class="muted">قیمت الان همین‌جا</span><b>${toman(bp)}</b></div>`;
+    h += `<div class="now">${serviceSwitch(r.base.prices, r.names) || '<span class="muted" style="flex:1">قیمت الان</span>'}<b>${toman(bp)}</b></div>`;
     if (r.drift && Math.abs(r.drift) >= C.MIN_SAVING) {
       h += `<div class="note w">قیمت اسنپ وسط جستجو ${r.drift > 0 ? 'گرون' : 'ارزون'} شد (${toman(Math.abs(r.drift))}). <button class="lnk" data-a="run">دوباره بگرد</button></div>`;
     }
@@ -783,7 +809,7 @@
   function panelHTML() {
     const r = state.result, st = status();
     let h = `<div class="pn"><div class="hd">${LOGO}<b>یه‌قدم</b><span class="sp"></span>
-      ${st && st.spin ? '<span class="spin"></span>' : ''}<button class="ic" data-a="close" aria-label="کوچک کن">جمع کن</button></div>`;
+      ${st && st.spin ? '<span class="spin"></span>' : ''}<button class="ic" data-a="close" title="جمع کن" aria-label="جمع کن">${ICON.collapse}</button></div>`;
     if (state.running) {
       const done = r ? r.requests : 0, total = r && r.planned ? r.planned : 23;
       h += `<div class="bar"><i style="transform:scaleX(${(done / Math.max(1, total)).toFixed(3)})"></i></div>`;
@@ -802,12 +828,13 @@
       h += setupHTML();
     } else if (r && r.base && !state.setup) {
       h += resultHTML();
-      h += `<div class="ft"><button class="lnk" data-a="setup">جستجوی دوباره با فاصلهٔ دیگه</button>
-        <div class="muted">روی نقشه انگشتت رو نگه دار (کامپیوتر: کلیک راست) تا قیمت همون نقطه رو ببینی.</div></div>`;
+      h += `<div class="ft"><button class="lnk" data-a="setup">جستجوی دوباره</button>
+        <div class="muted">برای قیمت یک نقطهٔ دلخواه، روی نقشه انگشتت رو نگه دار.</div></div>`;
     } else if (state.route) {
       h += setupHTML();
     }
-    h += `<div class="muted ft">برنامهٔ غیررسمی؛ ربطی به اسنپ نداره.</div></div></div>`;
+    if (!(r && r.base && !state.setup && !state.running)) h += `<div class="muted ft">برنامهٔ غیررسمی؛ ربطی به اسنپ نداره.</div>`;
+    h += '</div></div>';
     return h;
   }
 
@@ -885,7 +912,10 @@
     else if (a === 'svc') { settings.services[cat()] = +k; saveSettings(); const top = currentCards()[0]; state.selected = top ? top.c : null; emit(); drawMap(); }
     else if (a === 'pick') {
       const c = findById(k);
-      if (c) { state.selected = c; drawMap(); emit(); moveMapTo(c.kind === 'both' ? c.dest : c); }
+      if (!c) return;
+      state.selected = c;
+      if (window.innerWidth < 640) state.sheet = false; // on a phone the panel covers the map: show the point instead
+      drawMap(); emit(); moveMapTo(c.kind === 'both' ? c.dest : c);
     } else if (a === 'apply') {
       e.stopPropagation();
       const c = findById(k);
@@ -916,6 +946,7 @@
     if (!host) mount();
     else if (!document.contains(host) && document.body) document.body.appendChild(host);
     syncRoute(); // markers settle after Snapp's request returns
+    layout();
     emit();
   }, 1500);
 
