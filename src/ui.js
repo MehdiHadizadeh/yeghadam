@@ -547,6 +547,7 @@
     const street = c.street || ROAD[c.cls] || 'خیابان';
     return c.crossed ? `اون‌ور ${street}` : `${street}، ${c.dir}`;
   }
+  const TAG = { nearest: 'نزدیک‌ترین', balanced: 'متعادل', cheapest: 'ارزون‌ترین', best: 'بهترین' };
   const ERR = {
     auth: 'وارد اکانت اسنپ نیستی یا نشستت تموم شده. یک بار خارج و دوباره وارد شو.',
     rate: 'اسنپ موقتاً استعلام‌ها رو محدود کرده. چند دقیقه بعد دوباره امتحان کن.',
@@ -570,7 +571,6 @@
   const LOGO = `<svg class="lg" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#15192e"/><circle cx="7.9" cy="15.8" r="2.6" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="15.9" cy="8.7" r="4.6" fill="#c5f04a"/></svg>`;
 
   const ICON = {
-    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     collapse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>',
   };
 
@@ -594,7 +594,7 @@
   .hd .sp{flex:1}
   .ic{display:grid;place-items:center;border:0;background:transparent;border-radius:10px;width:36px;height:36px;color:#475569}
   .ic:hover{background:#f1f5f9}
-  .ic svg,.x svg{width:18px;height:18px}
+  .ic svg{width:18px;height:18px}
   .bd{flex:1;min-height:0;overflow:auto;padding:8px 10px 10px;overscroll-behavior:contain;scrollbar-width:thin}
   .muted{color:#64748b;font-size:12.5px}
   .q{font-weight:700;margin:2px 0 8px}
@@ -613,20 +613,22 @@
   .now{display:flex;align-items:center;gap:8px;margin-bottom:6px}
   .now .seg{flex:1}
   .now b{font-size:14px;white-space:nowrap}
-  .card{border:1.5px solid #e2e8f0;border-radius:12px;padding:7px 6px 7px 10px;margin-top:6px;cursor:pointer}
+  .card{border:1.5px solid #e2e8f0;border-radius:14px;padding:9px 11px;margin-top:8px;cursor:pointer}
   .card.sel{border-color:#15192e;background:#fafdf1}
   .r1{display:flex;align-items:center;gap:8px}
-  .x{display:grid;place-items:center;border:0;background:transparent;border-radius:8px;width:30px;height:30px;color:#94a3b8;flex:none}
-  .x:hover{background:#f1f5f9;color:#475569}
   .n{width:24px;height:24px;flex:none;border-radius:50%;border:2px solid #15192e;color:#15192e;background:#fff;font-weight:800;font-size:13px;line-height:20px;text-align:center}
   .card.sel .n{background:#c5f04a;color:#15192e}
-  .sv{font-size:15.5px;font-weight:800;color:#3f6212;flex:1;white-space:nowrap}
-  .r2{font-size:12.5px;margin-top:2px;color:#475569;padding-inline-start:32px}
+  .sv{font-size:17px;font-weight:800;color:#3f6212;flex:1;white-space:nowrap}
+  .tag{font-size:11.5px;font-weight:700;color:#475569;background:#f1f5f9;border-radius:7px;padding:1px 8px;white-space:nowrap}
+  .r2{font-size:13px;margin-top:3px;color:#334155}
+  .r3{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .pr{flex:1;font-size:13px;color:#334155;white-space:nowrap}
+  .pr s{color:#94a3b8;margin-inline-start:6px}
   .r2 b{color:#0f172a}
   .k{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:0 6px;margin-inline-end:4px}
   .k.origin{background:#e0f2fe;color:#075985}.k.dest{background:#fef3c7;color:#92400e}.k.both{background:#ede9fe;color:#5b21b6}
-  .go{border:0;border-radius:10px;min-height:32px;padding:0 12px;font-size:13px;font-weight:700;background:#15192e;color:#fff;flex:none}
-  .nb{border:0;border-radius:10px;min-height:36px;padding:0 10px;font-size:13px;font-weight:700;background:#f1f5f9;color:#475569}
+  .go{border:0;border-radius:10px;min-height:34px;padding:0 14px;font-size:13px;font-weight:700;background:#15192e;color:#fff;flex:none}
+  .nb{border:0;border-radius:10px;min-height:34px;padding:0 12px;font-size:13px;font-weight:700;background:#f1f5f9;color:#475569;flex:none}
   .note{background:#f4f7ec;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px;color:#1f2a10}
   .note.w{background:#fff7e6;color:#713f12}
   .note.e{background:#fdeeee;color:#7f1d1d}
@@ -757,9 +759,10 @@
   function cardHTML(k, i) {
     const c = k.c, sel = c === state.selected ? ' sel' : '';
     return `<div class="card${sel}" data-a="pick" data-k="${esc(c.id)}">
-      <div class="r1"><span class="n">${fa(i + 1)}</span><span class="sv">${toman(k.saving)} ارزون‌تر</span>
-        <button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال</button><button class="x" data-a="dismiss" data-k="${esc(c.id)}" title="اینجا نمی‌رم" aria-label="اینجا نمی‌رم">${ICON.close}</button></div>
-      <div class="r2"><span class="k ${c.kind}">${KIND[c.kind]}</span>${esc(placeShort(c))}، <b>${fa(c.walk)} متر</b> پیاده، ${toman(k.price)}</div>
+      <div class="r1"><span class="n">${fa(i + 1)}</span><span class="sv">${toman(k.saving)} ارزون‌تر</span><span class="tag">${TAG[k.tag]}</span></div>
+      <div class="r2"><span class="k ${c.kind}">${KIND[c.kind]}</span>${esc(placeShort(c))}، <b>${fa(c.walk)} متر</b> پیاده</div>
+      <div class="r3"><span class="pr">${toman(k.price)}<s>${fa(Math.round(k.base / 10))}</s></span>
+        <button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال در اسنپ</button><button class="nb" data-a="dismiss" data-k="${esc(c.id)}" title="این نقطه رو نشون نده">نمی‌رم</button></div>
     </div>`;
   }
 
