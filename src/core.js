@@ -301,15 +301,17 @@
       if (done.has(key)) continue;
       done.add(key);
       const pen = Math.max(CROSS_PENALTY[s.info.cls], CROSS_PENALTY[best.cls] || 0);
+      // len is the routing cost; m is what the rider actually walks
       const len = best.d + pen;
-      nodes[s.a].adj.push({ to: best.n, len, seg: CROSS });
-      nodes[best.n].adj.push({ to: s.a, len, seg: CROSS });
+      nodes[s.a].adj.push({ to: best.n, len, m: best.d, seg: CROSS });
+      nodes[best.n].adj.push({ to: s.a, len, m: best.d, seg: CROSS });
     }
   }
 
   // Dijkstra over walkable edges, up to `budget` meters. Starts at the nearest point a car can stop on (Snapp's pin is
   // a pickup point), so a pin next to a park path or a highway still starts on the street network; falls back to the
-  // nearest walkable node.
+  // nearest walkable node. dist is the routing cost (crossing a divided road adds a penalty); walked is the real
+  // distance on foot, from the pin itself.
   function walkFrom(g, from, budget) {
     const [sx, sy] = g.pr.xy(from.lng, from.lat);
     let start = -1, snap = Infinity;
@@ -324,8 +326,10 @@
     }
     const N = g.nodes.length;
     const dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), crossed = new Uint8Array(N);
-    if (start < 0) return { start, snap: Infinity, dist, prev, crossed };
+    const walked = new Float64Array(N).fill(Infinity);
+    if (start < 0) return { start, snap: Infinity, dist, walked, prev, crossed };
     dist[start] = 0;
+    walked[start] = snap;
     const heap = [[0, start]];
     const push = (item) => {
       heap.push(item);
@@ -357,13 +361,14 @@
         const nd = d + e.len;
         if (nd < dist[e.to]) {
           dist[e.to] = nd;
+          walked[e.to] = walked[u] + (e.m != null ? e.m : e.len);
           prev[e.to] = u;
           crossed[e.to] = crossed[u] || (e.seg === CROSS ? 1 : 0);
           push([nd, e.to]);
         }
       }
     }
-    return { start, snap, dist, prev, crossed };
+    return { start, snap, dist, walked, prev, crossed };
   }
 
   function pathTo(g, w, id) {
@@ -377,7 +382,7 @@
     const ll = g.pr.ll(n.x, n.y);
     return {
       kind, node: id, lat: ll.lat, lng: ll.lng,
-      walk: Math.round(w.dist[id] + (isFinite(w.snap) ? w.snap : 0)), // the pin may sit off the road (a square, a courtyard)
+      walk: Math.round(w.walked[id]), // from the pin, which may sit off the road (a square, a courtyard)
       crossed: !!w.crossed[id],
       street: seg ? seg.info.name : '',
       cls: seg ? seg.info.cls : '',
@@ -392,7 +397,7 @@
   function pickCandidates(g, w, budget, max) {
     const MIN_GAP = 20, NEAR = 15;
     const pool = [];
-    g.nodes.forEach((n, i) => { if (n.stop >= 0 && w.dist[i] >= NEAR && w.dist[i] <= budget) pool.push(i); });
+    g.nodes.forEach((n, i) => { if (n.stop >= 0 && w.dist[i] >= NEAR && w.dist[i] <= budget && w.walked[i] <= budget) pool.push(i); });
     if (!pool.length) return [];
     const chosen = [];
     let far = -1;
@@ -425,7 +430,7 @@
       fill(ring, 2 - have);
     }
     fill(pool, max); // rings that had too few roads leave room for more elsewhere
-    return chosen.sort((a, b) => w.dist[a] - w.dist[b]);
+    return chosen.sort((a, b) => w.walked[a] - w.walked[b]); // nearest first, in real meters
   }
 
   // Up to `max` new points 12–35 m around a good one, spread apart and away from anything already quoted
@@ -436,7 +441,7 @@
     const pool = [];
     g.nodes.forEach((n, i) => {
       const d = Math.hypot(n.x - c.x, n.y - c.y);
-      if (n.stop >= 0 && d >= 12 && d <= 35 && w.dist[i] <= budget && w.crossed[i] === w.crossed[id]) pool.push([i, w.dist[i]]);
+      if (n.stop >= 0 && d >= 12 && d <= 35 && w.walked[i] <= budget && w.crossed[i] === w.crossed[id]) pool.push([i, w.dist[i]]);
     });
     pool.sort((a, b) => a[1] - b[1]); // shorter walks first
     for (const [i] of pool) {

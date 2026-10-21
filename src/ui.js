@@ -432,7 +432,7 @@
       map.on('click', 'yeghadam-pts', (e) => {
         const f = e.features && e.features[0];
         const c = f && allQuoted().find((x) => x.id && x.id === f.properties.id);
-        if (c && !state.apply) { state.selected = c; state.sheet = true; state.setup = false; drawMap(); emit(); }
+        if (c && !state.apply) { state.selected = c; state.sheet = true; state.setup = false; drawMap(); emit(); if (phone()) moveMapTo(c, null, true); }
       });
     } catch (e) { needsDraw = true; console.warn('[yeghadam] draw', e); }
   }
@@ -451,14 +451,29 @@
       const on = w.card === state.selected, el = document.createElement('div');
       el.textContent = fa(w.n);
       el.style.cssText = `width:${on ? 32 : 28}px;height:${on ? 32 : 28}px;border-radius:50%;box-sizing:border-box;border:2.5px solid #15192e;background:${on ? '#c5f04a' : '#fff'};color:#15192e;font:800 ${on ? 15 : 13.5}px/1 ${FONT};display:grid;place-items:center;box-shadow:0 6px 14px -4px rgba(15,18,40,.5);cursor:pointer`;
-      el.addEventListener('click', (e) => { e.stopPropagation(); state.selected = w.card; state.sheet = true; state.setup = false; drawMap(); emit(); });
+      el.addEventListener('click', (e) => { e.stopPropagation(); state.selected = w.card; state.sheet = true; state.setup = false; drawMap(); emit(); if (phone()) moveMapTo(w.at, null, true); });
       badges.push(new mb.Marker({ element: el, anchor: 'bottom', offset: [0, -8] }).setLngLat([w.at.lng, w.at.lat]).addTo(map));
     }
   }
-  function moveMapTo(c, ms) {
+  // lift: centre the point in the part of the map left visible above the phone's bottom sheet. The guided apply
+  // never lifts: Snapp's pin must land exactly on the point.
+  function moveMapTo(c, ms, lift) {
     if (!state.map || !c) return false;
-    state.map.easeTo({ center: [c.lng, c.lat], zoom: Math.max(state.map.getZoom(), 16.5), duration: ms == null ? 700 : ms });
+    const opt = { center: [c.lng, c.lat], zoom: Math.max(state.map.getZoom(), 16.5), duration: ms == null ? 700 : ms };
+    const dy = lift ? liftOffset() : 0;
+    if (dy) opt.offset = [0, dy];
+    state.map.easeTo(opt);
     return true;
+  }
+  function liftOffset() {
+    const map = state.map, pn = root && root.querySelector('.pn');
+    if (!map || !pn || !phone()) return 0;
+    try {
+      const box = map.getContainer().getBoundingClientRect(), c = map.project(map.getCenter());
+      const top = box.top + 56, bottom = pn.getBoundingClientRect().top; // 56: Snapp's own buttons at the top
+      if (bottom - top < 80) return 0;
+      return Math.round((top + bottom) / 2 - (box.top + c.y));
+    } catch (e) { return 0; }
   }
 
   /* ---------------- guided apply ---------------- */
@@ -570,12 +585,15 @@
   // brand mark: a ring (you are here) and, one step over, a lime dot (cheaper). Same drawing as the app icon.
   const LOGO = `<svg class="lg" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#15192e"/><circle cx="7.9" cy="15.8" r="2.6" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="15.9" cy="8.7" r="4.6" fill="#c5f04a"/></svg>`;
   // Long press on a phone, right click with a mouse.
+  // Phones get the panel as a bottom sheet over Snapp's ride sheet; wider screens keep it floating over the map.
+  const phone = () => window.innerWidth < 640;
   const TOUCH = (() => { try { return matchMedia('(pointer:coarse)').matches; } catch (e) { return true; } })();
 
   // Line icons on a 24 grid, 2 px stroke.
   const svgIcon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
   const ICON = {
     collapse: svgIcon('<path d="m18 15-6-6-6 6"/>'),
+    down: svgIcon('<path d="m6 9 6 6 6-6"/>'),
     help: svgIcon('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'),
     close: svgIcon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
     next: svgIcon('<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>'),
@@ -771,6 +789,19 @@
   .dots i.on{width:20px;background:var(--ink)}
   .gnav .btn{width:auto;min-height:44px;padding:0 20px}
   .gnav .btn.ghost{padding:0 14px}
+  .grab{display:none}
+  @media(max-width:639px){
+    .pn{top:auto;bottom:0;left:0;width:100%;min-height:0;max-height:min(64vh,calc(100vh - 150px));border-radius:22px 22px 0 0;
+      padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:0 -14px 36px -14px rgba(15,18,40,.4),0 -1px 0 rgba(15,18,40,.06)}
+    .pn.in{animation:sheet .4s cubic-bezier(.16,1,.3,1)}
+    .grab{display:grid;place-items:center;width:100%;height:16px;flex:none;cursor:grab}
+    .grab i{width:40px;height:4px;border-radius:2px;background:#d3d6df}
+    .hd{padding-top:0}
+    .bd{padding-bottom:16px}
+    .card{padding:12px 13px 11px}
+    .sv{font-size:17px}
+  }
+  @keyframes sheet{from{transform:translateY(48px)}}
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
   `;
 
@@ -793,11 +824,18 @@
       else if (e.key === 'ArrowRight') guideGo(-1);
     });
     // swipe between guide steps
-    let sx = null;
-    root.addEventListener('touchstart', (e) => { sx = state.guide != null && e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+    let sx = null, sy = null;
+    root.addEventListener('touchstart', (e) => {
+      const t = e.touches.length === 1 ? e.touches[0] : null;
+      sx = t && state.guide != null ? t.clientX : null;
+      sy = t && state.sheet && phone() && e.target.closest && e.target.closest('.grab,.hd') ? t.clientY : null;
+    }, { passive: true });
     root.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0];
+      if (sy != null && t.clientY - sy > 48) { sy = null; state.sheet = false; emit(); return; }
+      sy = null;
       if (sx == null || state.guide == null) return;
-      const dx = e.changedTouches[0].clientX - sx;
+      const dx = t.clientX - sx;
       sx = null;
       if (Math.abs(dx) > 48) guideGo(dx > 0 ? 1 : -1);
     }, { passive: true });
@@ -811,7 +849,7 @@
     const w = window.innerWidth, h = window.innerHeight;
     let top = 0;
     for (let el = document.elementFromPoint(w / 2, h - 4); el && el !== document.body; el = el.parentElement) {
-      if (el === host) return h / 2;
+      if (el === host) return lastSheet || h / 2;
       const r = el.getBoundingClientRect();
       if (r.width >= w * 0.9 && r.top >= h * 0.2 && r.top < h - 60 && (!top || r.top < top)) top = r.top;
     }
@@ -908,7 +946,7 @@
     return `<div class="card${sel}" data-a="pick" data-k="${esc(c.id)}" role="button" tabindex="0" aria-label="پیشنهاد ${fa(i + 1)}">
       <div class="c1"><span class="n">${fa(i + 1)}</span><span class="sv"><span>${toman(k.saving)} ارزون‌تر</span></span><span class="wk">${ICON.walk}${fa(c.walk)} متر</span></div>
       <div class="c2">${KIND_ICON[c.kind]}<span class="pl"><b>${KIND[c.kind]}:</b> ${esc(placeShort(c))}</span><span class="tag">${TAG[k.tag]}</span></div>
-      <div class="c3"><span class="meta">می‌شه <b>${toman(k.price)}</b></span>
+      <div class="c3"><span class="meta"><b>${toman(k.price)}</b></span>
         <button class="nb" data-a="dismiss" data-k="${esc(c.id)}" title="این پیشنهاد رو نشون نده">نمی‌رم</button><button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال در اسنپ${ICON.next}</button></div>
     </div>`;
   }
@@ -1036,8 +1074,8 @@
 
   function panelHTML() {
     const r = state.result, st = status();
-    let h = `<div class="pn${state.anim ? ' in' : ''}" role="dialog" aria-label="یه‌قدم"><div class="hd">${LOGO}<span class="name">یه‌قدم</span><span class="unoff">غیررسمی</span><span class="sp"></span>
-      ${st && st.spin ? '<span class="spin"></span>' : ''}<button class="ic" data-a="guide" title="راهنما" aria-label="راهنما">${ICON.help}</button><button class="ic" data-a="close" title="جمع کن" aria-label="جمع کن">${ICON.collapse}</button></div>`;
+    let h = `<div class="pn${state.anim ? ' in' : ''}" role="dialog" aria-label="یه‌قدم"><button class="grab" data-a="close" aria-label="جمع کن"><i></i></button><div class="hd">${LOGO}<span class="name">یه‌قدم</span><span class="unoff">غیررسمی</span><span class="sp"></span>
+      ${st && st.spin ? '<span class="spin"></span>' : ''}<button class="ic" data-a="guide" title="راهنما" aria-label="راهنما">${ICON.help}</button><button class="ic" data-a="close" title="جمع کن" aria-label="جمع کن">${phone() ? ICON.down : ICON.collapse}</button></div>`;
     if (state.running) {
       const done = r ? r.requests : 0, total = r && r.planned ? r.planned : 23;
       h += `<div class="bar"><i style="transform:scaleX(${(done / Math.max(1, total)).toFixed(3)})"></i></div>`;
@@ -1151,8 +1189,7 @@
       const c = findById(k);
       if (!c) return;
       state.selected = c;
-      if (window.innerWidth < 640) state.sheet = false; // on a phone the panel covers the map: show the point instead
-      drawMap(); emit(); moveMapTo(c.kind === 'both' ? c.dest : c);
+      drawMap(); emit(); moveMapTo(c.kind === 'both' ? c.dest : c, null, true);
     } else if (a === 'apply') {
       e.stopPropagation();
       const c = findById(k);

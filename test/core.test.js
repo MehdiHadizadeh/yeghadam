@@ -57,7 +57,30 @@ test('a pin on a park path or next to a highway starts on the nearest street', (
   const h = C.walkFrom(g2, pr.ll(-60, -100), 150); // pin on the trunk, 20 m from the side street
   assert.ok(h.start >= 0 && g2.segs[g2.nodes[h.start].stop].info.cls === 'minor');
   const ids = C.pickCandidates(g, w, 150, 8);
-  assert.ok(C.toCandidate(g, w, ids[0], 'origin').walk >= w.dist[ids[0]] + 20, 'walk counts the way from the pin to the road');
+  assert.ok(w.snap > 20);
+  for (const id of ids) assert.ok(C.toCandidate(g, w, id, 'origin').walk >= w.snap, 'walk counts the way from the pin to the road');
+});
+
+test('the walk shown is the real distance on foot, not the crossing cost', () => {
+  const g = C.buildGraph(features, center, 200);
+  const w = C.walkFrom(g, start, 200);
+  const nearest = (x, y) => g.nodes.map((n, i) => [i, Math.hypot(n.x - x, n.y - y)]).sort((a, b) => a[1] - b[1])[0][0];
+  // 12 m straight across the boulevard: routing pays the 20 m penalty, the rider walks 12 m
+  const far = nearest(0, -6);
+  assert.ok(w.dist[far] >= 30, 'cost keeps the penalty');
+  assert.equal(C.toCandidate(g, w, far, 'dest').walk, 12);
+  // across, 80 m along the far side, then down the side street
+  const side = nearest(-80, -56);
+  assert.equal(C.toCandidate(g, w, side, 'dest').walk, Math.round(12 + 80 + (-6 - g.nodes[side].y)));
+});
+
+test('the walk shown, pin to road included, stays within the budget', () => {
+  const g = C.buildGraph(features, center, 100);
+  const w = C.walkFrom(g, pr.ll(0, 36), 100); // pin 30 m off the boulevard
+  assert.ok(w.snap > 29 && w.snap < 31);
+  const cands = C.pickCandidates(g, w, 100, 8).map((id) => C.toCandidate(g, w, id, 'origin'));
+  assert.ok(cands.length > 0);
+  for (const c of cands) assert.ok(c.walk <= 100, 'walk ' + c.walk + ' is over the 100 m budget');
 });
 
 test('a side street that stops 2 m short of the road (dropped T-junction vertex) is still connected', () => {
@@ -81,7 +104,7 @@ test('candidates: on stoppable roads only, spread, far side included, nearest fi
   const cands = ids.map((id) => C.toCandidate(g, w, id, 'dest'));
   for (const c of cands) {
     assert.ok(['primary', 'minor'].includes(c.cls), 'class ' + c.cls);
-    assert.ok(c.walk >= 15 && c.walk <= 150);
+    assert.ok(c.walk >= 10 && c.walk <= 150); // 12 m straight across the boulevard is the nearest
   }
   assert.ok(cands.some((c) => c.crossed), 'far side present');
   assert.ok(cands.filter((c) => c.walk <= 50).length >= 2, 'near options covered, not only far ones');
