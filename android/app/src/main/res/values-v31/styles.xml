@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ draws its own launch splash: give it the brand mark on navy, the same as the in-app splash. -->
+    <style name="AppTheme" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/brand_navy</item>
+        <item name="android:statusBarColor">@color/brand_navy</item>
+        <item name="android:navigationBarColor">@color/brand_navy</item>
+        <item name="android:colorAccent">@color/brand_navy</item>
+        <item name="android:colorPrimary">@color/brand_navy</item>
+        <item name="android:windowSplashScreenBackground">@color/brand_navy</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark</item>
+    </style>
+</resources>

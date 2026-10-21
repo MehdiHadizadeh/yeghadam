@@ -8,11 +8,20 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
+import android.view.animation.DecelerateInterpolator;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
@@ -23,6 +32,10 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
@@ -37,16 +50,24 @@ public class MainActivity extends Activity {
 
     private static final String HOME = "https://app.snapp.taxi/";
     private static final int REQ_LOCATION = 41;
+    private static final int NAVY = 0xFF15192E;
+    private static final int LIME = 0xFFC5F04A;
+    // The splash stays at least this long, so it never flickers, and at most this long, if the page hangs.
+    private static final long SPLASH_MIN_MS = 900;
+    private static final long SPLASH_MAX_MS = 10000;
 
     private WebView web;
     private String script;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private View splash;
+    private View splashFill;
+    private long splashShownAt;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        styleSystemBars();
 
         script = readAsset("yeghadam.js");
         // Remote inspection exposes the whole Snapp session over USB: debug builds only.
@@ -56,7 +77,11 @@ public class MainActivity extends Activity {
 
         web = new WebView(this);
         web.setBackgroundColor(Color.WHITE);
-        setContentView(web);
+        FrameLayout frame = new FrameLayout(this);
+        frame.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(frame);
+        if (savedInstanceState == null) showSplash(frame);
+        else styleSystemBars();
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -102,6 +127,129 @@ public class MainActivity extends Activity {
             flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         }
         w.getDecorView().setSystemUiVisibility(flags);
+    }
+
+    private int dp(float v) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics()));
+    }
+
+    /**
+     * Brand screen over the WebView while Snapp's page loads. The mark sits where the Android 12+ launch splash
+     * draws it (a 288 dp box in the centre of the screen), so the system splash hands over without a jump.
+     */
+    private void showSplash(FrameLayout frame) {
+        Window w = getWindow();
+        w.setStatusBarColor(NAVY);
+        if (Build.VERSION.SDK_INT >= 27) w.setNavigationBarColor(NAVY);
+        w.getDecorView().setSystemUiVisibility(0);
+
+        FrameLayout s = new FrameLayout(this);
+        s.setBackgroundColor(NAVY);
+        s.setClickable(true);
+
+        // spacer, mark, text: the text overlaps the mark's empty margin by as much as the spacer is short of it,
+        // so the mark stays exactly centred
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        column.addView(new View(this), new LinearLayout.LayoutParams(1, dp(48)));
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.splash_mark);
+        column.addView(mark, new LinearLayout.LayoutParams(dp(288), dp(288)));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.setGravity(Gravity.CENTER_HORIZONTAL);
+        TextView name = new TextView(this);
+        name.setText(R.string.app_name);
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        text.addView(name);
+        TextView tagline = new TextView(this);
+        tagline.setText(R.string.splash_tagline);
+        tagline.setTextColor(0xFFB8BDD0);
+        tagline.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        text.addView(tagline);
+        // loading line, filled with the page's progress from the right (the reading direction)
+        FrameLayout track = new FrameLayout(this);
+        GradientDrawable trackBg = new GradientDrawable();
+        trackBg.setColor(0xFF2A3050);
+        trackBg.setCornerRadius(dp(2));
+        track.setBackground(trackBg);
+        View fill = new View(this);
+        GradientDrawable fillBg = new GradientDrawable();
+        fillBg.setColor(LIME);
+        fillBg.setCornerRadius(dp(2));
+        fill.setBackground(fillBg);
+        fill.setPivotX(dp(96));
+        fill.setScaleX(0.06f);
+        track.addView(fill, new FrameLayout.LayoutParams(dp(96), dp(3)));
+        LinearLayout.LayoutParams trackLp = new LinearLayout.LayoutParams(dp(96), dp(3));
+        trackLp.topMargin = dp(22);
+        text.addView(track, trackLp);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(96));
+        textLp.topMargin = -dp(48);
+        column.addView(text, textLp);
+        s.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+
+        TextView unofficial = new TextView(this);
+        unofficial.setText(R.string.splash_unofficial);
+        unofficial.setTextColor(0x8CFFFFFF);
+        unofficial.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        FrameLayout.LayoutParams noteLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        noteLp.bottomMargin = dp(36);
+        s.addView(unofficial, noteLp);
+
+        frame.addView(s, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        splash = s;
+        splashFill = fill;
+        splashShownAt = SystemClock.uptimeMillis();
+
+        // one entrance: the name and tagline settle under the mark
+        text.setAlpha(0f);
+        text.setTranslationY(dp(10));
+        text.animate().alpha(1f).translationY(0).setStartDelay(120).setDuration(450).setInterpolator(new DecelerateInterpolator(2f)).start();
+        unofficial.setAlpha(0f);
+        unofficial.animate().alpha(1f).setStartDelay(300).setDuration(450).start();
+
+        ui.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                hideSplash();
+            }
+        }, SPLASH_MAX_MS);
+    }
+
+    private void setSplashProgress(int progress) {
+        if (splash == null || splashFill == null) return;
+        float to = Math.max(0.06f, Math.min(1f, progress / 100f));
+        if (to > splashFill.getScaleX()) splashFill.animate().scaleX(to).setDuration(200).start();
+    }
+
+    private void hideSplash() {
+        final View s = splash;
+        if (s == null) return;
+        long wait = SPLASH_MIN_MS - (SystemClock.uptimeMillis() - splashShownAt);
+        if (wait > 0) {
+            ui.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    hideSplash();
+                }
+            }, wait);
+            return;
+        }
+        splash = null;
+        splashFill = null;
+        styleSystemBars();
+        s.animate().alpha(0f).setDuration(260).withEndAction(new Runnable() {
+            @Override
+            public void run() {
+                ViewGroup parent = (ViewGroup) s.getParent();
+                if (parent != null) parent.removeView(s);
+            }
+        }).start();
     }
 
     private void inject(WebView v) {
@@ -199,17 +347,20 @@ public class MainActivity extends Activity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             inject(view);
+            hideSplash();
         }
 
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             if (request != null && request.isForMainFrame()) {
                 String html = "<!doctype html><html dir='rtl'><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
-                        + "<style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;margin:0;color:#0f172a;text-align:center;padding:0 24px}"
-                        + "a{margin-top:16px;background:#0f766e;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:bold}</style></head>"
+                        + "<style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;margin:0;color:#15192e;text-align:center;padding:0 24px;line-height:1.7}"
+                        + "h3{margin:0 0 4px}div{color:#3a4058}"
+                        + "a{margin-top:20px;background:#15192e;color:#fff;padding:12px 28px;border-radius:14px;text-decoration:none;font-weight:bold}</style></head>"
                         + "<body><h3>اتصال برقرار نشد</h3><div>اینترنت یا فیلترشکن را بررسی کن و دوباره امتحان کن.</div>"
                         + "<a href='" + HOME + "'>تلاش دوباره</a></body></html>";
                 view.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
+                hideSplash();
             }
         }
 
@@ -224,6 +375,7 @@ public class MainActivity extends Activity {
         @Override
         public void onProgressChanged(WebView view, int newProgress) {
             if (newProgress >= 70) inject(view);
+            setSplashProgress(newProgress);
         }
 
         @Override

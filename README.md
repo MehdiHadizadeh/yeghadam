@@ -14,10 +14,11 @@
 > یه‌قدم برنامه‌ای غیررسمی است و هیچ ارتباطی با اسنپ ندارد. فقط قیمت می‌پرسد و هرگز سفری ثبت نمی‌کند.
 
 <p align="center">
-  <img src="docs/images/screen-setup.png" width="200" alt="انتخاب فاصله‌ی پیاده‌روی">
-  <img src="docs/images/screen-results.png" width="200" alt="پیشنهادها">
-  <img src="docs/images/screen-pill.png" width="200" alt="نمایش روی نقشه">
-  <img src="docs/images/screen-apply.png" width="200" alt="اعمال در اسنپ">
+  <img src="docs/images/screen-guide.png" width="170" alt="راهنمای اول کار">
+  <img src="docs/images/screen-setup.png" width="170" alt="انتخاب فاصله‌ی پیاده‌روی">
+  <img src="docs/images/screen-results.png" width="170" alt="پیشنهادها">
+  <img src="docs/images/screen-pill.png" width="170" alt="نمایش روی نقشه">
+  <img src="docs/images/screen-apply.png" width="170" alt="اعمال در اسنپ">
 </p>
 <p align="center"><sub>تصاویر نمونه‌اند؛ قیمت و خیابان‌ها برای نمایش انتخاب شده‌اند.</sub></p>
 
@@ -26,7 +27,9 @@
 1. در اسنپ مبدا و مقصد را انتخاب کن تا قیمت بیاید، بعد روی **«ارزون‌ترش کن»** بزن.
 2. بگو امروز تا کجا حاضری پیاده بروی: ۱۰۰، ۲۰۰ یا ۳۰۰ متر. ماشین یا موتور.
 3. چند ثانیه بعد، حداکثر سه پیشنهاد می‌بینی: چقدر ارزان‌تر، چند متر پیاده، کجا.
-4. روی **«اعمال در اسنپ»** بزن؛ پین به همان نقطه می‌رود و فقط تأییدش می‌کنی.
+4. روی **«اعمال در اسنپ»** بزن؛ پین به همان نقطه می‌رود و فقط تأییدش می‌کنی. بعد پیاده تا نقطه‌ی جدید برو.
+
+بار اول یک راهنمای شش‌قدمی همین‌ها را با تصویر نشان می‌دهد و هر وقت خواستی با دکمه‌ی **؟** بالای پنل دوباره باز می‌شود.
 
 <p align="center"><img src="docs/images/tutorial.gif" width="300" alt="راهنمای شش‌قدمی"></p>
 
@@ -112,7 +115,7 @@ The route is taken from Snapp's own price requests, and only once its first and 
 The version lives in `package.json` only; the extension manifest and the Android version are derived from it.
 
 1. Bump `version` in `package.json` and commit.
-2. Tag and push: `git tag v2.0.3 && git push origin v2.0.3`.
+2. Tag and push: `git tag v2.1.0 && git push origin v2.1.0`.
 3. The [Release workflow](.github/workflows/release.yml) tests, builds and signs the APK, zips the extension and publishes both with checksums.
 
 The release keystore is never committed. It is stored as repository secrets: `KEYSTORE_BASE64` (`base64 -w0 release.p12`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`.

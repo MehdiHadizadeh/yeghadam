@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Navy from the first frame, so the launch runs straight into the splash without a white flash. -->
     <style name="AppTheme" parent="android:Theme.DeviceDefault.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/white</item>
-        <item name="android:statusBarColor">@android:color/white</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:navigationBarColor">@android:color/white</item>
-        <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:colorAccent">#15192E</item>
-        <item name="android:colorPrimary">#15192E</item>
+        <item name="android:windowBackground">@color/brand_navy</item>
+        <item name="android:statusBarColor">@color/brand_navy</item>
+        <item name="android:navigationBarColor">@color/brand_navy</item>
+        <item name="android:colorAccent">@color/brand_navy</item>
+        <item name="android:colorPrimary">@color/brand_navy</item>
     </style>
 </resources>
