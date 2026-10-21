@@ -59,8 +59,8 @@
     const local = safeJSON(lsGet(CONSENT_KEY));
     return Math.max(v, (local && +local.v) || 0);
   }
-  // 0: intro, 1: notice, null: done. Riders who used an earlier version only see the notice.
-  state.intro = consentVersion() >= NOTICE_V ? null : settings.seenIntro || settings.seenGuide ? 1 : 0;
+  // 0: intro, 1: notice, null: done.
+  state.intro = consentVersion() >= NOTICE_V ? null : settings.seenIntro ? 1 : 0;
   state.fromIntro = state.intro === 0;
   const introOpen = (open) => { try { if (NATIVE && NATIVE.introOpen) NATIVE.introOpen(open); } catch (e) {} };
 
@@ -410,7 +410,7 @@
       const r = state.result, s = sid();
       const pts = { type: 'FeatureCollection', features: [] }, paths = { type: 'FeatureCollection', features: [] };
       const basePrice = r && r.base ? C.priceOf(r.base, s) : Infinity;
-      for (const c of allQuoted()) {
+      for (const c of state.away ? [] : allQuoted()) {
         if (!c.prices && !c.loading) continue;
         const ref = c.probe && c.base ? c.base[s] || Infinity : basePrice;
         const delta = c.loading ? 0 : C.priceOf(c, s) - ref;
@@ -419,7 +419,7 @@
           properties: { id: c.id || '', tone: c.loading ? 0 : delta <= -C.MIN_SAVING ? 1 : delta >= C.MIN_SAVING ? 3 : 2, sel: c === state.selected || c === state.probe ? 1 : 0 },
         });
       }
-      const sel = state.selected;
+      const sel = state.away ? null : state.selected;
       if (sel) {
         if (sel.kind === 'both') { paths.features.push(lineOf(sel.origin.path), lineOf(sel.dest.path)); }
         else if (sel.path && sel.path.length > 1) paths.features.push(lineOf(sel.path));
@@ -455,7 +455,7 @@
   let badges = [], badgeSig = '';
   function drawBadges() {
     const map = state.map, mb = window.mapboxgl;
-    const want = state.result && state.result.base && !state.running && !state.apply ? currentCards().map((k, i) => ({ card: k.c, at: k.c.kind === 'both' ? k.c.dest : k.c, n: i + 1 })) : [];
+    const want = state.result && state.result.base && !state.running && !state.apply && !state.away ? currentCards().map((k, i) => ({ card: k.c, at: k.c.kind === 'both' ? k.c.dest : k.c, n: i + 1 })) : [];
     const sig = want.map((w) => w.card.id + (w.card === state.selected ? '*' : '')).join(',');
     if (sig === badgeSig) return;
     badgeSig = sig;
@@ -937,7 +937,20 @@
     positionTapHint();
   }
 
-  const onPricePage = () => !!state.route && Date.now() - state.route.t < 30 * 60 * 1000;
+  // The price page is up while Snapp shows both labelled markers on a visible map. Leaving it (back, clearing the
+  // destination, another page) removes them, so the pill and panel go with it. Without the map (it was not found),
+  // fall back to how recent the route is.
+  function routeOnScreen() {
+    const map = state.map;
+    if (!map) return !!state.route && Date.now() - state.route.t < 30 * 60 * 1000;
+    try {
+      const el = map.getContainer();
+      if (!document.contains(el) || !el.offsetWidth || !el.offsetHeight) return false;
+    } catch (e) { return false; }
+    const shown = (kind) => [...document.querySelectorAll('.mapboxgl-marker')].some((m) => m.getClientRects().length && C.normalizeFa(m.textContent).includes(LABEL[kind]));
+    return !!state.route && shown('origin') && shown('dest');
+  }
+  const onPricePage = () => routeOnScreen();
   const resultFresh = () => state.result && state.result.base && Date.now() - state.result.at < 5 * 60 * 1000;
 
   // one-line status, shown in the collapsed pill and the panel header
@@ -962,7 +975,7 @@
     return null;
   }
   function pillHTML() {
-    if (state.apply || state.probe || !authHeader()) return '';
+    if (state.apply || state.probe || !authHeader() || !onPricePage()) return '';
     const s = status();
     if (!s) return '';
     return `<button class="pill ${s.cls}" data-a="open" aria-label="باز کردن یه‌قدم">${s.spin ? '<span class="spin"></span>' : LOGO}<span>${s.html || esc(s.text)}</span></button>`;
@@ -1322,6 +1335,7 @@
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
   // If the site changes its markers or its price requests, the route is never confirmed. Say so plainly instead of
   // offering a search that cannot work.
+  let awayTicks = 0;
   function checkCompat() {
     const last = recent[recent.length - 1];
     const markers = document.querySelectorAll('.mapboxgl-marker').length;
@@ -1334,6 +1348,12 @@
     else if (!document.contains(host) && document.body) document.body.appendChild(host);
     syncRoute(); // markers settle after Snapp's request returns
     checkCompat();
+    awayTicks = state.apply || routeOnScreen() ? 0 : awayTicks + 1;
+    if (awayTicks === 2) {
+      if (state.running) state.cancel = true;
+      state.sheet = false; state.probe = null; state.guide = null; state.away = true;
+      drawMap();
+    } else if (!awayTicks && state.away) { state.away = false; drawMap(); }
     layout();
     emit();
   }, 1500);
