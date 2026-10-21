@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     private View splash;
     private View splashFill;
     private long splashShownAt;
+    private volatile boolean introOpen;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -242,7 +243,7 @@ public class MainActivity extends Activity {
         }
         splash = null;
         splashFill = null;
-        styleSystemBars();
+        if (!introOpen) styleSystemBars(); // the first-run intro is navy too: keep the bars until it closes
         s.animate().alpha(0f).setDuration(260).withEndAction(new Runnable() {
             @Override
             public void run() {
@@ -411,6 +412,48 @@ public class MainActivity extends Activity {
      * third-party ones the site loads, so the bridge stays limited to harmless calls.
      */
     private class Bridge {
+        /** Version of the "unofficial app" notice the rider accepted, 0 if none. Kept outside the page's storage. */
+        @JavascriptInterface
+        public int consentVersion() {
+            return getSharedPreferences("yeghadam", MODE_PRIVATE).getInt("consent", 0);
+        }
+
+        @JavascriptInterface
+        public void setConsent(int version) {
+            getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putInt("consent", version).apply();
+        }
+
+        /** The rider declined the notice: close without remembering it, so it is asked again next time. */
+        @JavascriptInterface
+        public void decline() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    finishAndRemoveTask();
+                }
+            });
+        }
+
+        /** The first-run intro is full-screen navy: match the system bars while it is open. */
+        @JavascriptInterface
+        public void introOpen(final boolean open) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    introOpen = open;
+                    if (splash != null) return; // the splash keeps navy bars and restyles them when it hides
+                    if (open) {
+                        Window w = getWindow();
+                        w.setStatusBarColor(NAVY);
+                        if (Build.VERSION.SDK_INT >= 27) w.setNavigationBarColor(NAVY);
+                        w.getDecorView().setSystemUiVisibility(0);
+                    } else {
+                        styleSystemBars();
+                    }
+                }
+            });
+        }
+
         @JavascriptInterface
         public void toast(final String text) {
             runOnUiThread(new Runnable() {

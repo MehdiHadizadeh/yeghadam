@@ -49,6 +49,21 @@
     toast: null,
   };
 
+  // First run: what the app does, then the notice that it is unofficial, accepted before anything else runs.
+  // NOTICE_V goes up only when the notice says something new (risk, data, what the app does). On Android the
+  // acceptance is also kept by the app, so it survives Snapp clearing the page's storage at logout.
+  const NOTICE_V = 1, CONSENT_KEY = 'yeghadam:consent';
+  function consentVersion() {
+    let v = 0;
+    try { if (NATIVE && NATIVE.consentVersion) v = +NATIVE.consentVersion() || 0; } catch (e) {}
+    const local = safeJSON(lsGet(CONSENT_KEY));
+    return Math.max(v, (local && +local.v) || 0);
+  }
+  // 0: intro, 1: notice, null: done. Riders who used an earlier version only see the notice.
+  state.intro = consentVersion() >= NOTICE_V ? null : settings.seenIntro || settings.seenGuide ? 1 : 0;
+  state.fromIntro = state.intro === 0;
+  const introOpen = (open) => { try { if (NATIVE && NATIVE.introOpen) NATIVE.introOpen(open); } catch (e) {} };
+
   function carRoute(r) { return r && Array.isArray(r.points) && r.category === CAR ? r : null; }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
@@ -301,7 +316,7 @@
   /* ---------------- search ---------------- */
   async function run() {
     syncRoute();
-    if (state.running || !state.route) return;
+    if (state.running || !state.route || state.intro != null || state.off) return;
     const wait = waitFor('search');
     if (wait) { state.error = 'slow'; state.waitMin = wait; state.setup = true; emit(); return; }
     noteUsage('search');
@@ -353,7 +368,7 @@
 
   // Long press / right click: quote one point as the origin or the destination, whichever is nearer.
   async function probeAt(ll) {
-    if (!ll || !state.route || state.running || state.apply) return;
+    if (!ll || !state.route || state.running || state.apply || state.intro != null || state.off) return;
     const pts = state.route.points, O = pts[0], D = pts[pts.length - 1];
     const p = { lat: ll.lat, lng: ll.lng };
     const dO = C.distance(p, O), dD = C.distance(p, D);
@@ -789,6 +804,37 @@
   .dots i.on{width:20px;background:var(--ink)}
   .gnav .btn{width:auto;min-height:44px;padding:0 20px}
   .gnav .btn.ghost{padding:0 14px}
+  .io{position:fixed;inset:0;z-index:2147483647;background:var(--ink);color:#fff;overflow:hidden;display:flex;justify-content:center}
+  .io .glow{position:absolute;width:640px;height:640px;border-radius:50%;background:radial-gradient(circle,rgba(197,240,74,.15),rgba(197,240,74,0) 65%);left:-200px;bottom:-280px;pointer-events:none}
+  .icol{position:relative;width:100%;max-width:460px;height:100%;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 18px) 24px calc(env(safe-area-inset-bottom,0px) + 18px)}
+  .ib{display:flex;align-items:center;gap:10px;flex:none}
+  .ib .lg{width:34px;height:34px}
+  .ib .lg rect{fill:#262b47}
+  .ib b{font-size:18px;font-weight:900}
+  .ichip{font-size:12px;font-weight:700;color:var(--lime);border:1px solid rgba(197,240,74,.45);border-radius:999px;padding:1px 10px}
+  .imain{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding-top:min(9vh,64px);scrollbar-width:none}
+  .imain.note-page{padding-top:min(6vh,40px)}
+  .io h1{font-size:clamp(30px,8.8vw,40px);font-weight:900;line-height:1.32;letter-spacing:-.02em;text-wrap:balance;animation:ri .6s cubic-bezier(.16,1,.3,1)}
+  .io h1 em{font-style:normal;color:var(--lime)}
+  .io p{margin-top:14px;font-size:16px;line-height:1.85;color:#b8bdd0;max-width:36ch}
+  .iart{margin-top:28px;border-radius:22px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);animation:ri .7s .06s cubic-bezier(.16,1,.3,1) backwards}
+  .iart svg{width:100%;height:auto}
+  .il{list-style:none;margin-top:18px}
+  .il li{display:flex;gap:14px;align-items:flex-start;padding:13px 0;font-size:15px;line-height:1.75;color:#e4e7f1}
+  .il li + li{border-top:1px solid rgba(255,255,255,.08)}
+  .il i{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:50%;border:1.5px solid rgba(197,240,74,.55);color:var(--lime)}
+  .il i svg{width:16px;height:16px}
+  .iact{flex:none;display:flex;flex-direction:column;gap:6px;padding-top:16px}
+  .iact .dots{flex:none;justify-content:center;margin-bottom:10px}
+  .io .dots i{background:rgba(255,255,255,.2)}
+  .io .dots i.on{background:var(--lime)}
+  .btn.lime{background:var(--lime);color:var(--ink);min-height:52px;font-size:16px}
+  .btn.lime svg{color:var(--ink)}
+  .io button:focus-visible{outline-color:var(--lime)}
+  .itx{min-height:44px;text-align:center;font-size:14px;font-weight:700;color:#b8bdd0;border-radius:12px}
+  .itx:hover{color:#fff}
+  @media(max-height:720px){.io h1{font-size:28px}.imain.note-page{padding-top:16px}.il{margin-top:10px}.il li{padding:8px 0;font-size:14px;line-height:1.65}.io p{font-size:15px;margin-top:10px}.iart{margin-top:18px}.btn.lime{min-height:48px}}
+  @keyframes ri{from{opacity:.2;transform:translateY(14px)}}
   .grab{display:none}
   @media(max-width:639px){
     .pn{top:auto;bottom:0;left:0;width:100%;min-height:0;max-height:min(64vh,calc(100vh - 150px));border-radius:22px 22px 0 0;
@@ -867,15 +913,21 @@
 
   function render() {
     if (!root) return;
-    const main = state.guide != null ? guideHTML() : state.sheet && !state.apply && !state.probe ? panelHTML() : pillHTML();
-    const toast = state.toast ? `<div class="toast" role="status">${ICON.check}<span>${esc(state.toast)}</span></div>` : '';
-    const html = `<style>${CSS}</style><div class="w">${main}${state.guide != null ? '' : probeHTML() + applyHTML()}${toast}</div>`;
+    let html;
+    if (state.off) html = '';
+    else if (state.intro != null) html = `<style>${CSS}</style><div class="w">${introHTML()}</div>`;
+    else {
+      const main = state.guide != null ? guideHTML() : state.sheet && !state.apply && !state.probe ? panelHTML() : pillHTML();
+      const toast = state.toast ? `<div class="toast" role="status">${ICON.check}<span>${esc(state.toast)}</span></div>` : '';
+      html = `<style>${CSS}</style><div class="w">${main}${state.guide != null ? '' : probeHTML() + applyHTML()}${toast}</div>`;
+    }
     state.anim = false; // the panel's entrance plays once per opening
     if (html === lastHTML) return;
     const sc = root.querySelector('.bd'), top = sc ? sc.scrollTop : 0;
     const act = root.activeElement, focusId = act && act.id, caret = act && act.selectionStart;
     root.innerHTML = html;
     lastHTML = html;
+    if (state.intro != null) { const b = root.getElementById('inext'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {} }
     const s2 = root.querySelector('.bd');
     if (s2) s2.scrollTop = top;
     if (focusId) {
@@ -1000,6 +1052,48 @@
     return note('ok', `کمترین پیاده‌روی برای زیر ${toman(cap)}: <b>${fa(best.walk)} متر</b> (${toman(C.priceOf(best, s))}). <button class="lnk" data-a="pick" data-k="${esc(best.id)}">نشونم بده</button>`);
   }
 
+  /* ---------------- first run ---------------- */
+  // Full-screen navy, like the app's banners: one idea per screen, a big headline with one lime word.
+  const NOTICE = [
+    [ICON.info, 'یه‌قدم برنامهٔ رسمی اسنپ نیست و هیچ ربطی به اسنپ نداره.'],
+    [ICON.shield, 'با حساب خودت و روی دستگاه خودت فقط از اسنپ قیمت می‌پرسه. هیچ‌وقت سفر درخواست یا لغو نمی‌کنه و اطلاعاتت رو جای دیگه‌ای نمی‌فرسته.'],
+    [ICON.check, 'قیمت نهایی همونیه که خود اسنپ موقع درخواست سفر نشون می‌ده.'],
+    [ICON.alert, 'بعیده، ولی ممکنه اسنپ استعلام خودکار رو خلاف قوانینش بدونه و حسابت رو محدود کنه. استفاده با مسئولیت خودته.'],
+  ];
+  const introArt = () => `<rect width="320" height="190" fill="#1d2240"/><path d="M0 92H320" stroke="#262c4d" stroke-width="18"/><path d="M110 0V190M228 0V190" stroke="#262c4d" stroke-width="10"/>
+    <path d="M78 92H194" stroke="#fff" stroke-opacity=".6" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="0.5 8"/>
+    <circle cx="62" cy="92" r="12" fill="#1d2240" stroke="#fff" stroke-width="3.5"/><circle cx="212" cy="92" r="15" fill="#c5f04a"/>
+    <g transform="translate(62 50)"><rect x="-40" y="-16" width="80" height="30" rx="10" fill="#262c4d"/>${T(0, 5, fa(85000), 13, 700, '#b8bdd0')}<path d="M-26 0H26" stroke="#b8bdd0" stroke-width="1.5"/></g>
+    <g transform="translate(212 48)"><rect x="-46" y="-17" width="92" height="32" rx="11" fill="#c5f04a"/>${T(0, 5, fa(72000), 14, 800, '#15192e')}</g>
+    <g transform="translate(137 122)"><rect x="-32" y="-13" width="64" height="22" rx="11" fill="#262c4d"/>${T(0, 3, fa(40) + ' متر', 11, 700, '#e4e7f1')}</g>
+    <g transform="translate(160 162)"><rect x="-128" y="-17" width="256" height="34" rx="17" fill="#15192e" stroke="#2f3658"/><text y="5" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle" direction="rtl" unicode-bidi="embed" font-family="${FONT}">${toman(130000)} ارزون‌تر، ${fa(40)} متر پیاده</text></g>`;
+  function introHTML() {
+    const notice = state.intro === 1;
+    const dots = state.review ? '' : `<span class="dots" aria-label="صفحهٔ ${fa(state.intro + 1)} از ${fa(2)}"><i class="${notice ? '' : 'on'}"></i><i class="${notice ? 'on' : ''}"></i></span>`;
+    const body = notice
+      ? `<h1 id="it">قبل از شروع،<br><em>اینو بدون</em></h1><ul class="il">${NOTICE.map(([ic, t]) => `<li><i>${ic}</i><span>${t}</span></li>`).join('')}</ul>`
+      : `<h1 id="it">یه قدم راه برو،<br><em>ارزون‌تر</em> سوار شو</h1>
+        <p>یه‌قدم چند نقطهٔ نزدیکت رو از خود اسنپ قیمت می‌گیره و ارزون‌ترها رو نشونت می‌ده: چقدر ارزون‌تر و چند متر پیاده. تصمیم با خودته.</p>
+        <div class="iart"><svg viewBox="0 0 320 190" direction="ltr" aria-hidden="true">${introArt()}</svg></div>`;
+    const acts = !notice ? `<button class="btn lime" id="inext" data-a="introNext">بعدی${ICON.next}</button>`
+      : state.review ? `<button class="btn lime" id="inext" data-a="reviewClose">بستن</button>`
+      : `<button class="btn lime" id="inext" data-a="accept">فهمیدم، قبول دارم</button><button class="itx" data-a="decline">نه، ممنون</button>`;
+    return `<div class="io" role="dialog" aria-modal="true" aria-labelledby="it"><div class="glow"></div><div class="icol">
+      <div class="ib">${LOGO}<b>یه‌قدم</b><span class="sp"></span><span class="ichip">غیررسمی</span></div>
+      <div class="imain${notice ? ' note-page' : ''}">${body}</div><div class="iact">${dots}${acts}</div></div></div>`;
+  }
+  function acceptNotice() {
+    try { localStorage.setItem(CONSENT_KEY, JSON.stringify({ v: NOTICE_V, at: Date.now() })); } catch (e) {}
+    try { if (NATIVE && NATIVE.setConsent) NATIVE.setConsent(NOTICE_V); } catch (e) {}
+    settings.seenIntro = true; saveSettings();
+    state.intro = null; introOpen(false); emit();
+  }
+  // Android closes the app and asks again next time; in the browser the page stays plain Snapp until it reloads.
+  function declineNotice() {
+    try { if (NATIVE && NATIVE.decline) { NATIVE.decline(); return; } } catch (e) {}
+    state.intro = null; state.off = true; introOpen(false); emit();
+  }
+
   /* ---------------- guide ---------------- */
   // Six short steps, each drawn with the same parts the rider will see: Snapp's map, our pill, panel and cards.
   const T = (x, y, s, size, weight, fill, anchor) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor || 'middle'}" font-family="${FONT}">${s}</text>`;
@@ -1049,7 +1143,7 @@
   function guideHTML() {
     const i = state.guide, g = GUIDE[i], last = i === GUIDE.length - 1;
     const body = g.list
-      ? `<ul class="gl">${g.list().map(([ic, s]) => `<li>${ic}<span>${s}</span></li>`).join('')}</ul><div class="fine">${ICON.info}<span>برنامهٔ غیررسمی؛ ربطی به اسنپ نداره.</span></div>`
+      ? `<ul class="gl">${g.list().map(([ic, s]) => `<li>${ic}<span>${s}</span></li>`).join('')}</ul><div class="fine">${ICON.info}<span>برنامهٔ غیررسمی؛ ربطی به اسنپ نداره. <button class="lnk" data-a="terms">شرایط استفاده</button></span></div>`
       : `<p>${g.d}</p>`;
     return `<div class="gd" data-a="guideOut"><div class="gs" role="dialog" aria-modal="true" aria-labelledby="gt">
       <div class="gtop">${LOGO}<span class="name">راهنمای یه‌قدم</span><span class="sp"></span><button class="ic" data-a="guideSkip" aria-label="بستن راهنما" title="بستن">${ICON.close}</button></div>
@@ -1166,6 +1260,11 @@
     const t = e.target.closest('[data-a]');
     if (!t) return;
     const a = t.dataset.a, k = t.dataset.k;
+    if (a === 'introNext') { state.intro = 1; settings.seenIntro = true; saveSettings(); emit(); return; }
+    if (a === 'accept') { acceptNotice(); return; }
+    if (a === 'decline') { declineNotice(); return; }
+    if (a === 'terms') { state.guide = null; state.intro = 1; state.review = true; emit(); return; }
+    if (a === 'reviewClose') { state.intro = null; state.review = false; state.sheet = true; emit(); return; }
     if (a === 'guideOut' && e.target !== t) return; // a tap inside the guide sheet, not on the backdrop
     if (a === 'open') { state.sheet = true; state.anim = true; if (!settings.seenGuide && state.guide == null) state.guide = 0; emit(); }
     else if (a === 'close') { state.sheet = false; emit(); }
@@ -1209,6 +1308,9 @@
 
   // Android back button: close this UI first.
   window.__yeghadamBack = function () {
+    if (state.review) { state.intro = null; state.review = false; emit(); return true; }
+    if (state.intro === 1 && state.fromIntro) { state.intro = 0; emit(); return true; }
+    if (state.intro != null) { declineNotice(); return true; } // back never walks past the notice
     if (state.guide != null) { closeGuide(); return true; }
     if (state.apply) { cancelApply(); return true; }
     if (state.probe) { state.probe = null; emit(); drawMap(); return true; }
@@ -1216,6 +1318,7 @@
     return false;
   };
 
+  if (state.intro != null) introOpen(true);
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
   // If the site changes its markers or its price requests, the route is never confirmed. Say so plainly instead of
   // offering a search that cannot work.
