@@ -42,13 +42,16 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
 /**
- * Hosts the Snapp passenger web app (app.snapp.taxi) in a WebView and injects
- * the Yeghadam script. Everything runs on the device with the user's own Snapp
- * session. The script only requests price quotes; it never creates a ride.
+ * Hosts the Snapp or Tapsi passenger web app (app.snapp.taxi, app.tapsi.cab) in a WebView and injects
+ * the Yeghadam script. Everything runs on the device with the rider's own session. The script only
+ * requests price quotes; it never creates a ride.
  */
 public class MainActivity extends Activity {
 
-    private static final String HOME = "https://app.snapp.taxi/";
+    private static final String SERVICE_SNAPP = "snapp";
+    private static final String SERVICE_TAPSI = "tapsi";
+    private static final String HOME_SNAPP = "https://app.snapp.taxi/";
+    private static final String HOME_TAPSI = "https://app.tapsi.cab/";
     private static final int REQ_LOCATION = 41;
     private static final int NAVY = 0xFF15192E;
     private static final int LIME = 0xFFC5F04A;
@@ -65,10 +68,19 @@ public class MainActivity extends Activity {
     private View splashFill;
     private long splashShownAt;
     private volatile boolean introOpen;
+    // Which service the rider picked (null until the first choice), and the picker while it is on screen.
+    private String service;
+    private View chooser;
+    private boolean clearHistoryOnLoad;
+
+    private String homeUrl() {
+        return SERVICE_TAPSI.equals(service) ? HOME_TAPSI : HOME_SNAPP;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        service = getSharedPreferences("yeghadam", MODE_PRIVATE).getString("service", null);
 
         script = readAsset("yeghadam.js");
         // Remote inspection exposes the whole Snapp session over USB: debug builds only.
@@ -114,9 +126,98 @@ public class MainActivity extends Activity {
 
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
+        } else if (service == null) {
+            showChooser();
         } else {
-            web.loadUrl(HOME);
+            web.loadUrl(homeUrl());
         }
+    }
+
+    /** Full-screen choice between the two services. Shown on the first run and from the back button on a first page. */
+    private void showChooser() {
+        if (chooser != null || web == null || !(web.getParent() instanceof ViewGroup)) return;
+        FrameLayout c = new FrameLayout(this);
+        c.setBackgroundColor(NAVY);
+        c.setClickable(true);
+
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        column.setPadding(dp(28), 0, dp(28), 0);
+
+        TextView title = new TextView(this);
+        title.setText(R.string.choose_service);
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        column.addView(title);
+
+        TextView note = new TextView(this);
+        note.setText(R.string.choose_service_note);
+        note.setTextColor(0xFFB8BDD0);
+        note.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        note.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noteLp.topMargin = dp(8);
+        noteLp.bottomMargin = dp(12);
+        column.addView(note, noteLp);
+
+        column.addView(serviceButton(R.string.service_snapp, SERVICE_SNAPP));
+        column.addView(serviceButton(R.string.service_tapsi, SERVICE_TAPSI));
+
+        c.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        ((ViewGroup) web.getParent()).addView(c, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        chooser = c;
+
+        Window w = getWindow();
+        w.setStatusBarColor(NAVY);
+        if (Build.VERSION.SDK_INT >= 27) w.setNavigationBarColor(NAVY);
+        w.getDecorView().setSystemUiVisibility(0);
+    }
+
+    private View serviceButton(int label, final String id) {
+        TextView b = new TextView(this);
+        b.setText(label);
+        b.setGravity(Gravity.CENTER);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        boolean current = id.equals(service);
+        b.setTextColor(current ? NAVY : Color.WHITE);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(current ? LIME : 0xFF2A3050);
+        bg.setCornerRadius(dp(16));
+        b.setBackground(bg);
+        b.setPadding(0, dp(16), 0, dp(16));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(14);
+        b.setLayoutParams(lp);
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                selectService(id);
+            }
+        });
+        return b;
+    }
+
+    private void hideChooser() {
+        View c = chooser;
+        if (c == null) return;
+        chooser = null;
+        ViewGroup parent = (ViewGroup) c.getParent();
+        if (parent != null) parent.removeView(c);
+        if (splash == null && !introOpen) styleSystemBars();
+    }
+
+    /** Remember the service and open its home page, unless it is already the one on screen. */
+    private void selectService(String id) {
+        boolean same = id.equals(service);
+        service = id;
+        getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putString("service", id).apply();
+        hideChooser();
+        if (same) return;
+        clearHistoryOnLoad = true; // back must not return to the other service
+        web.loadUrl(homeUrl());
     }
 
     private void styleSystemBars() {
@@ -347,6 +448,10 @@ public class MainActivity extends Activity {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
+            if (clearHistoryOnLoad) {
+                clearHistoryOnLoad = false;
+                view.clearHistory();
+            }
             inject(view);
             hideSplash();
         }
@@ -359,7 +464,7 @@ public class MainActivity extends Activity {
                         + "h3{margin:0 0 4px}div{color:#3a4058}"
                         + "a{margin-top:20px;background:#15192e;color:#fff;padding:12px 28px;border-radius:14px;text-decoration:none;font-weight:bold}</style></head>"
                         + "<body><h3>اتصال برقرار نشد</h3><div>اینترنت یا فیلترشکن را بررسی کن و دوباره امتحان کن.</div>"
-                        + "<a href='" + HOME + "'>تلاش دوباره</a></body></html>";
+                        + "<a href='" + homeUrl() + "'>تلاش دوباره</a></body></html>";
                 view.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
                 hideSplash();
             }
@@ -476,12 +581,16 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (chooser != null) { // back from the picker leaves the app
+            finish();
+            return;
+        }
         web.evaluateJavascript("(window.__yeghadamBack && window.__yeghadamBack()) ? 1 : 0", new android.webkit.ValueCallback<String>() {
             @Override
             public void onReceiveValue(String handled) {
                 if ("1".equals(handled)) return;
                 if (web.canGoBack()) web.goBack();
-                else finish();
+                else showChooser(); // first page: offer the other service; back again leaves
             }
         });
     }
