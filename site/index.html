@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>یه‌قدم | یه قدم اون‌ورتر، ارزون‌تر</title>
+<meta name="description" content="نقطه‌ای چند قدم اون‌طرف‌تر که اسنپ یا تپسی همون مسیر رو ارزون‌تر حساب می‌کنه. اپ اندروید و افزونه‌ی مرورگر. غیررسمی، بدون سرور، فقط قیمت می‌پرسه.">
+<meta name="theme-color" content="#15192e">
+<meta property="og:type" content="website">
+<meta property="og:title" content="یه‌قدم | یه قدم اون‌ورتر، ارزون‌تر">
+<meta property="og:description" content="نقطه‌ای چند قدم اون‌طرف‌تر که اسنپ یا تپسی همون مسیر رو ارزون‌تر حساب می‌کنه.">
+<meta property="og:image" content="https://mehdihadizadeh.github.io/yeghadam/img/banner.png">
+<meta property="og:url" content="https://mehdihadizadeh.github.io/yeghadam/">
+<link rel="icon" href="img/icon-512.png">
+<link rel="preload" href="fonts/Vazirmatn-NL-wght.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  /* Layout: a navy hero whose picture is drawn in SVG, three steps with the real screens, how apply differs per
+     service, trust, install, questions. Phone first: one column, then a second column from 560px and the full
+     layout from 960px. Brand colors come from the app: navy ground, one lime accent. Nothing loads from other sites. */
+  @font-face {
+    font-family: "Vazirmatn";
+    src: url("fonts/Vazirmatn-NL-wght.woff2") format("woff2");
+    font-weight: 100 900;
+    font-display: swap;
+  }
+  :root {
+    --ink: #15192e;
+    --ink-2: #222844;
+    --lime: #c5f04a;
+    --lime-ink: #3f6212;
+    --bg: #f3f4ee;
+    --surface: #ffffff;
+    --fg: #15192e;
+    --muted: #565d75;
+    --line: #d9dccf;
+    --font: "Vazirmatn", Tahoma, "Segoe UI", system-ui, sans-serif;
+    --pad: clamp(16px, 4vw, 28px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0f1220; --surface: #171b30; --fg: #eef0f6; --muted: #a3aac2; --line: #2a3050; --lime-ink: #c5f04a; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #0f1220; --surface: #171b30; --fg: #eef0f6; --muted: #a3aac2; --line: #2a3050; --lime-ink: #c5f04a; color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); font: 400 16px/1.9 var(--font);
+    padding-left: max(var(--pad), env(safe-area-inset-left, 0px)); padding-right: max(var(--pad), env(safe-area-inset-right, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  ::selection { background: var(--lime); color: var(--ink); }
+  a { color: inherit; text-underline-offset: 4px; }
+  :focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; border-radius: 6px; }
+  img, svg { max-width: 100%; }
+  .wrap { max-width: 1120px; margin-inline: auto; }
+  h1, h2, h3 { line-height: 1.35; text-wrap: balance; margin: 0; }
+  p { margin: 0; text-wrap: pretty; }
+
+  /* top bar: brand and the links that matter on a phone; the rest appear from 560px */
+  .bar { display: flex; align-items: center; gap: 4px 10px; padding-block: 6px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 800; font-size: 19px; text-decoration: none; }
+  .brand svg { width: 34px; height: 34px; flex: none; }
+  .bar nav { margin-inline-start: auto; display: flex; font-size: 15px; font-weight: 500; }
+  .bar nav a { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 10px; text-decoration: none; color: var(--muted); }
+  .bar nav a:hover { color: var(--fg); }
+  .bar nav .wide { display: none; }
+
+  /* hero */
+  .hero { background: var(--ink); color: #fff; border-radius: 26px; overflow: hidden; margin-top: 4px; }
+  .hero-in { display: grid; gap: 28px; padding: 30px 20px 24px; }
+  .hero h1 { font-size: clamp(2.3rem, 10.5vw, 4.4rem); font-weight: 900; letter-spacing: -0.5px; line-height: 1.22; }
+  .hero h1 em { font-style: normal; color: var(--lime); }
+  .hero .sub { color: #c3c8da; font-size: 16.5px; max-width: 44ch; margin-top: 14px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 24px; border-radius: 14px; font: 800 16px/1 var(--font); text-decoration: none; transition: transform .18s ease-out, background-color .18s ease-out; flex: 1 1 200px; }
+  .btn:active { transform: scale(.98); }
+  .btn.main { background: var(--lime); color: var(--ink); }
+  .btn.main:hover { background: #d6f67a; }
+  .btn.alt { border: 1.5px solid #404872; color: #fff; }
+  .btn.alt:hover { background: var(--ink-2); }
+  .btn svg { width: 20px; height: 20px; flex: none; }
+  .ver { margin-top: 12px; font-size: 13.5px; color: #aab1c9; min-height: 1.9em; }
+  .fine { font-size: 13.5px; color: #aab1c9; max-width: 50ch; }
+  figure.scene { margin: 0; width: 100%; max-width: 520px; justify-self: center; }
+  .scene svg { width: 100%; height: auto; display: block; }
+  .scene figcaption { margin-top: 10px; font-size: 13px; color: #aab1c9; text-align: center; }
+
+  /* the one authored moment: the walk draws once, then the new price lands */
+  @media (prefers-reduced-motion: no-preference) {
+    .walk { animation: walk 1.3s .5s cubic-bezier(.2, .7, .2, 1) both; }
+    .tag-new { animation: pop .5s 1.6s cubic-bezier(.2, .8, .2, 1.2) both; transform-origin: center; transform-box: fill-box; }
+    @keyframes walk { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0); } }
+    @keyframes pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+  }
+
+  section { padding-block: 56px 0; }
+  h2 { font-size: clamp(1.65rem, 6vw, 2.4rem); font-weight: 900; margin-bottom: 10px; }
+  .lead { color: var(--muted); max-width: 54ch; font-size: 16.5px; }
+
+  /* steps: a real sequence. Phone: text, then the screen (cropped to the panel). 560px: text beside the screen. */
+  .steps { list-style: none; padding: 0; margin: 32px 0 0; display: grid; gap: 40px; }
+  .steps li { display: grid; gap: 18px; align-content: start; padding-top: 28px; border-top: 1px solid var(--line); }
+  .steps .t { display: grid; gap: 10px; align-content: start; }
+  .steps .n { font-size: 2.4rem; font-weight: 900; line-height: 1; color: var(--lime-ink); font-variant-numeric: tabular-nums; }
+  .steps h3 { font-size: 1.3rem; font-weight: 800; }
+  .steps p { color: var(--muted); max-width: 42ch; }
+  .steps p b { color: var(--fg); font-weight: 700; }
+  .phone { border-radius: 30px; padding: 7px; background: #0b0e1c; box-shadow: 0 0 0 1.5px #343a58, 0 22px 36px -20px rgba(8, 10, 24, .5); width: min(240px, 100%); aspect-ratio: 390 / 600; overflow: hidden; }
+  .phone img { width: 100%; height: 100%; display: block; border-radius: 24px; object-fit: cover; object-position: bottom; background: #e9ebe3; }
+  .phone img.top { object-position: top; }
+
+  /* apply, per service */
+  .twin { display: grid; gap: 12px; margin-top: 36px; }
+  .twin > div { border-radius: 20px; padding: 20px 22px 22px; background: var(--surface); border: 1px solid var(--line); }
+  .twin h3 { font-size: 1.15rem; font-weight: 800; margin-bottom: 2px; }
+  .twin p { color: var(--muted); }
+
+  /* trust */
+  .trust { list-style: none; padding: 0; margin: 28px 0 0; display: grid; }
+  .trust li { padding-block: 18px; border-top: 1px solid var(--line); display: grid; gap: 2px; }
+  .trust li:last-child { border-bottom: 1px solid var(--line); }
+  .trust b { font-weight: 800; font-size: 1.1rem; }
+  .trust span { color: var(--muted); max-width: 56ch; }
+
+  /* install */
+  .cols { display: grid; gap: 32px; margin-top: 26px; }
+  .cols h3 { font-size: 1.2rem; font-weight: 800; margin-bottom: 10px; }
+  ol.how { margin: 0; padding-inline-start: 1.4em; }
+  ol.how li { padding-inline-start: 4px; margin-bottom: 8px; color: var(--muted); }
+  ol.how li b { color: var(--fg); font-weight: 700; }
+  code { font: 500 .9em ui-monospace, Consolas, monospace; background: var(--surface); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; direction: ltr; unicode-bidi: embed; overflow-wrap: anywhere; }
+  .note { margin-top: 14px; font-size: 14.5px; color: var(--muted); max-width: 56ch; }
+
+  /* questions */
+  .faq { margin-top: 22px; }
+  details { border-top: 1px solid var(--line); max-width: 72ch; }
+  details:last-of-type { border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; font-weight: 700; padding-block: 12px; min-height: 52px; list-style: none; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-size: 24px; font-weight: 500; color: var(--muted); line-height: 1; flex: none; transition: transform .18s ease-out; }
+  details[open] summary::after { transform: rotate(45deg); }
+  details p { color: var(--muted); padding-bottom: 16px; }
+
+  footer { margin-top: 64px; padding-block: 20px 36px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; display: grid; gap: 10px; }
+  footer .links { display: flex; flex-wrap: wrap; gap: 0 8px; }
+  footer .links a { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 8px; color: var(--fg); }
+
+  /* 560px: a second column where it helps */
+  @media (min-width: 560px) {
+    .bar nav .wide { display: inline-flex; }
+    .hero-in { padding: 40px 36px 32px; }
+    .btn { flex: 0 0 auto; }
+    .steps li { grid-template-columns: minmax(0, 1fr) 210px; column-gap: 32px; align-items: center; }
+    .twin { grid-template-columns: 1fr 1fr; }
+    .cols { grid-template-columns: 1fr 1fr; gap: 40px; }
+    .trust { grid-template-columns: 1fr 1fr; column-gap: 40px; }
+    .trust li:nth-last-child(2) { border-bottom: 1px solid var(--line); }
+  }
+
+  /* 960px: hero beside its picture, three steps in a row */
+  @media (min-width: 960px) {
+    section { padding-block: 80px 0; }
+    .hero { border-radius: 30px; }
+    .hero-in { grid-template-columns: 1fr 1fr; align-items: center; padding: 64px 56px; gap: 36px; }
+    .hero h1 { font-size: clamp(2.6rem, 4.6vw, 3.8rem); }
+    figure.scene { max-width: none; }
+    .steps { grid-template-columns: repeat(3, 1fr); gap: 36px; margin-top: 44px; }
+    .steps li { grid-template-columns: 1fr; grid-template-rows: 1fr auto; align-items: start; align-content: stretch; }
+    .steps li > .phone { justify-self: start; }
+    .cols { gap: 64px; }
+    .trust { column-gap: 64px; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn, summary::after { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <a class="brand" href="./"><svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#15192e"/><circle cx="7.9" cy="15.8" r="2.6" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="15.9" cy="8.7" r="4.6" fill="#c5f04a"/></svg>یه‌قدم</a>
+    <nav aria-label="بخش‌ها">
+      <a class="wide" href="#steps">چطور کار می‌کنه</a>
+      <a href="#install">نصب</a>
+      <a href="#faq">سوال‌ها</a>
+      <a href="https://github.com/MehdiHadizadeh/yeghadam" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <div class="hero-in">
+        <div>
+          <h1>یه قدم اون‌ورتر،<br><em>ارزون‌تر</em></h1>
+          <p class="sub">قیمت اسنپ و تپسی فقط به مسیر بستگی نداره؛ نقطه‌ی دقیق سوار و پیاده شدن هم مهمه. یه‌قدم نقطه‌های نزدیکی رو که می‌شه پیاده رفت قیمت می‌گیره و نشونت می‌ده کجا چند هزار تومن ارزون‌تره.</p>
+          <div class="cta">
+            <a class="btn main" id="dl-apk" href="https://github.com/MehdiHadizadeh/yeghadam/releases/latest" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+              دانلود برای اندروید
+            </a>
+            <a class="btn alt" id="dl-zip" href="https://github.com/MehdiHadizadeh/yeghadam/releases/latest" rel="noopener">افزونه‌ی مرورگر</a>
+          </div>
+          <p class="ver" id="ver" aria-live="polite"></p>
+          <p class="fine">برنامه‌ای غیررسمیه و به اسنپ و تپسی وابسته نیست. فقط قیمت می‌پرسه و هیچ‌وقت سفری ثبت نمی‌کنه.</p>
+        </div>
+
+        <figure class="scene">
+          <svg viewBox="0 0 520 440" role="img" aria-label="نقشه‌ی نمونه: از نقطه‌ی فعلی با ۴۰ متر پیاده‌روی به نقطه‌ای می‌رسی که قیمت از ۸۵ هزار به ۷۲ هزار تومان می‌رسه">
+            <rect width="520" height="440" rx="26" fill="#1c2142"/>
+            <g fill="#232a52">
+              <rect x="22" y="22" width="150" height="92" rx="10"/><rect x="198" y="22" width="150" height="92" rx="10"/><rect x="374" y="22" width="124" height="92" rx="10"/>
+              <rect x="22" y="140" width="150" height="84" rx="10"/><rect x="374" y="140" width="124" height="84" rx="10"/>
+              <rect x="22" y="250" width="150" height="86" rx="10"/><rect x="198" y="250" width="150" height="86" rx="10"/><rect x="374" y="250" width="124" height="86" rx="10"/>
+              <rect x="22" y="362" width="150" height="58" rx="10"/><rect x="198" y="362" width="150" height="58" rx="10"/><rect x="374" y="362" width="124" height="58" rx="10"/>
+            </g>
+            <rect x="198" y="140" width="150" height="84" rx="10" fill="#26402f"/>
+            <g stroke="#363f6e" stroke-width="2" stroke-linecap="round"><path d="M185 8v424M361 8v424M8 127h504M8 237h504M8 349h504"/></g>
+            <path d="M96 349V237h89V127h176" stroke="#5a78f2" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
+            <path class="walk" d="M96 237h89V127h176" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 9"/>
+            <circle cx="96" cy="237" r="11" fill="#1c2142" stroke="#fff" stroke-width="4"/>
+            <circle cx="361" cy="127" r="22" fill="#c5f04a" stroke="#15192e" stroke-width="4"/>
+            <g font-family="Vazirmatn, Tahoma, sans-serif" text-anchor="middle">
+              <rect x="22" y="126" width="132" height="36" rx="18" fill="#2d3558"/>
+              <text x="88" y="150" font-size="15" font-weight="700" fill="#aab1c9" text-decoration="line-through">۸۵٬۰۰۰ تومان</text>
+            </g>
+            <g class="tag-new" font-family="Vazirmatn, Tahoma, sans-serif" text-anchor="middle">
+              <rect x="283" y="62" width="156" height="42" rx="21" fill="#c5f04a"/>
+              <text x="361" y="90" font-size="18" font-weight="900" fill="#15192e">۷۲٬۰۰۰ تومان</text>
+            </g>
+            <g font-family="Vazirmatn, Tahoma, sans-serif" text-anchor="middle">
+              <rect x="200" y="172" width="72" height="30" rx="15" fill="#fff"/>
+              <text x="236" y="193" font-size="13.5" font-weight="800" fill="#15192e">۴۰ متر</text>
+            </g>
+          </svg>
+          <figcaption>مثال: مسیر و قیمت‌ها برای نمایش انتخاب شده‌اند.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <section id="steps">
+      <h2>سه حرکت، حدود ده ثانیه</h2>
+      <p class="lead">مسیرت رو مثل همیشه بزن. وقتی قیمت‌ها اومدن، دکمه‌ی «ارزون‌ترش کن» بالای قیمت‌ها پیدا می‌شه.</p>
+
+      <ol class="steps">
+        <li>
+          <div class="t"><span class="n" aria-hidden="true">۱</span>
+          <h3>بگو تا کجا پیاده میای</h3>
+          <p>برای مبدا و مقصد جدا انتخاب کن: <b>۱۰۰، ۲۰۰ یا ۳۰۰ متر</b>. با «همین‌جا» اون سر سر جاش می‌مونه و همه‌ی استعلام‌ها برای سر دیگه خرج می‌شه.</p></div>
+          <div class="phone"><img src="img/screen-setup.png" width="390" height="844" loading="lazy" alt="انتخاب فاصله‌ی پیاده‌روی برای مبدا و مقصد"></div>
+        </li>
+        <li>
+          <div class="t"><span class="n" aria-hidden="true">۲</span>
+          <h3>پیشنهادها رو ببین</h3>
+          <p>هر کارت می‌گه <b>چقدر ارزون‌تر</b>، چند متر پیاده و کجا. شماره‌ی کارت روی نقشه هم هست. پیشنهادی رو نمی‌خوای؟ «نمی‌رم» رو بزن.</p></div>
+          <div class="phone"><img src="img/screen-results.png" width="390" height="844" loading="lazy" alt="کارت‌های پیشنهاد با مبلغ صرفه و فاصله‌ی پیاده‌روی"></div>
+        </li>
+        <li>
+          <div class="t"><span class="n" aria-hidden="true">۳</span>
+          <h3>اعمال کن و پیاده برو</h3>
+          <p>روی «اعمال» بزن و نقطه‌ی جدید جایگزین می‌شه. بعد پیاده تا اون‌جا برو و سفر رو خودت ثبت کن.</p></div>
+          <div class="phone"><img class="top" src="img/screen-apply.png" width="390" height="844" loading="lazy" alt="اعمال پیشنهاد روی نقشه"></div>
+        </li>
+      </ol>
+
+      <div class="twin">
+        <div><h3>توی اسنپ</h3><p>پین خودش می‌ره سر نقطه‌ی جدید و فقط روی پین می‌زنی تا اسنپ تأییدش کنه.</p></div>
+        <div><h3>توی تپسی</h3><p>خود صفحه با نقطه‌ی جدید باز می‌شه و تأیید لازم نیست. قیمت زنده هم کنار قیمت قبلی نشون داده می‌شه.</p></div>
+      </div>
+    </section>
+
+    <section id="trust">
+      <h2>خیالت راحت</h2>
+      <ul class="trust">
+        <li><b>سرور نداره</b><span>همه‌چیز روی گوشی خودت می‌مونه و هیچ داده‌ای جمع نمی‌شه.</span></li>
+        <li><b>فقط قیمت می‌پرسه</b><span>هیچ‌وقت سفر درخواست یا لغو نمی‌کنه و توکن حسابت از دستگاهت بیرون نمی‌ره.</span></li>
+        <li><b>مراقب حسابته</b><span>تعداد جستجوها محدوده تا سرویس حساس نشه. بعیده، ولی ممکنه سرویس استعلام خودکار رو خلاف قوانینش بدونه؛ استفاده با مسئولیت خودته.</span></li>
+        <li><b>متن‌بازه</b><span>کدش رو توی <a href="https://github.com/MehdiHadizadeh/yeghadam" rel="noopener">GitHub</a> ببین و هر نسخه‌ای که دانلود می‌کنی رو با checksum چک کن.</span></li>
+      </ul>
+    </section>
+
+    <section id="install">
+      <h2>نصب</h2>
+      <div class="cols">
+        <div>
+          <h3>اندروید</h3>
+          <ol class="how">
+            <li>فایل <b>APK</b> رو از دکمه‌ی بالا دانلود کن.</li>
+            <li>بازش کن و اگه گوشی پرسید، نصب از این منبع رو اجازه بده.</li>
+            <li>اپ رو باز کن و <b>اسنپ یا تپسی</b> رو انتخاب کن، بعد با حساب خودت وارد شو.</li>
+            <li>برای عوض کردن سرویس، توی صفحه‌ی اول دکمه‌ی برگشت رو بزن.</li>
+          </ol>
+        </div>
+        <div>
+          <h3>مرورگر کامپیوتر</h3>
+          <ol class="how">
+            <li>فایل <b>zip افزونه</b> رو دانلود کن و از حالت فشرده دربیار.</li>
+            <li>توی Chrome یا Edge برو به <code>chrome://extensions</code> و <b>Developer mode</b> رو روشن کن.</li>
+            <li><b>Load unpacked</b> رو بزن و پوشه‌ی بازشده رو انتخاب کن.</li>
+            <li>توی سایت اسنپ یا تپسی مبدا و مقصد رو بزن و روی «ارزون‌ترش کن» کلیک کن.</li>
+          </ol>
+          <p class="note">فایرفاکس هم توی مانیفست هست ولی هنوز امتحان نشده.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <h2>سوال‌های پرتکرار</h2>
+      <div class="faq">
+        <details><summary>چرا بعضی وقت‌ها صرفه‌ای پیدا نمی‌شه؟</summary><p>شب‌ها و مسیرهای خلوت قیمت نقطه‌های اطراف تقریباً یکیه. ساعت‌های شلوغ و بلوارهای دوطرفه معمولاً نتیجه‌ی بهتری دارن.</p></details>
+        <details><summary>قیمتی که نشون می‌ده همونیه که موقع سفر می‌گیرم؟</summary><p>قیمت نهایی رو خود سرویس موقع درخواست سفر نشون می‌ده. قیمت‌ها توی چند دقیقه عوض می‌شن (توی تپسی هر یک دقیقه) و یه‌قدم وقتی قیمت جابه‌جا بشه خبرت می‌کنه، ولی صرفه تضمین نمی‌شه.</p></details>
+        <details><summary>«همین‌جا» یعنی چی؟</summary><p>اون سر، مبدا یا مقصد، جابه‌جا نمی‌شه. اگه فقط مقصد برات مهمه، مبدا رو روی «همین‌جا» بذار تا همه‌ی استعلام‌ها برای مقصد خرج بشه.</p></details>
+        <details><summary>اطلاعاتم کجا می‌ره؟</summary><p>هیچ‌جا. یه‌قدم سرور نداره و فقط به خود سرویس (اسنپ یا تپسی) و نقشه‌ی عمومی خیابان‌ها درخواست می‌فرسته. جزئیاتش توی <a href="https://github.com/MehdiHadizadeh/yeghadam/blob/main/PRIVACY.md" rel="noopener">PRIVACY.md</a> نوشته شده.</p></details>
+        <details><summary>باگ دیدم یا پیشنهاد دارم</summary><p>توی <a href="https://github.com/MehdiHadizadeh/yeghadam/issues" rel="noopener">Issues</a> بنویس و توکن و آدرس واقعیت رو پاک کن. مشکل امنیتی رو طبق <a href="https://github.com/MehdiHadizadeh/yeghadam/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a> خصوصی گزارش کن.</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="links">
+      <a href="https://github.com/MehdiHadizadeh/yeghadam" rel="noopener">کد در GitHub</a>
+      <a href="https://github.com/MehdiHadizadeh/yeghadam/releases" rel="noopener">همه‌ی نسخه‌ها</a>
+      <a href="https://github.com/MehdiHadizadeh/yeghadam/blob/main/CHANGELOG.md" rel="noopener">تغییرات</a>
+      <a href="https://github.com/MehdiHadizadeh/yeghadam/blob/main/PRIVACY.md" rel="noopener">حریم خصوصی</a>
+    </div>
+    <p>یه‌قدم با مجوز MIT منتشر شده. برنامه‌ای غیررسمیه و هیچ ارتباطی با اسنپ و تپسی نداره؛ «اسنپ» و «تپسی» نام تجاری صاحبانشونه.</p>
+  </footer>
+</div>
+
+<script>
+  // Point the buttons at the newest release. Without the API the buttons still open the release page.
+  (function () {
+    var fa = function (s) { return String(s).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); };
+    fetch('https://api.github.com/repos/MehdiHadizadeh/yeghadam/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function (rel) {
+        var apk = rel.assets.find(function (a) { return /\.apk$/.test(a.name); });
+        var zip = rel.assets.find(function (a) { return /extension.*\.zip$/.test(a.name); });
+        if (apk) document.getElementById('dl-apk').href = apk.browser_download_url;
+        if (zip) document.getElementById('dl-zip').href = zip.browser_download_url;
+        var v = (rel.tag_name || '').replace(/^v/, '');
+        var kb = apk ? ' · ' + fa(Math.round(apk.size / 1024)) + ' کیلوبایت' : '';
+        if (v) document.getElementById('ver').textContent = 'نسخه‌ی ' + fa(v) + kb;
+      })
+      .catch(function () {});
+  })();
+</script>
+</body>
+</html>
