@@ -62,7 +62,7 @@ jobs:
           (cd dist/extension && zip -r "../../out/yeghadam-extension-$VERSION.zip" .)
           (cd out && sha256sum * > SHA256SUMS.txt)
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: Yeghadam ${{ env.VERSION }}
           generate_release_notes: true
