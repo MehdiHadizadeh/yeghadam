@@ -12,7 +12,7 @@ const { version } = require(at('package.json'));
 
 const banner = (shell) => `/*
  * Yeghadam ${version} (${shell}). Generated from src/core.js and src/ui.js by scripts/build.js.
- * Only asks Snapp for price quotes (and reads public map tiles). It never requests a ride.
+ * Only asks Snapp or Tapsi for price quotes (and reads public map tiles). It never requests a ride.
  */
 `;
 const body = fs.readFileSync(at('src', 'core.js'), 'utf8') + '\n' + fs.readFileSync(at('src', 'ui.js'), 'utf8');

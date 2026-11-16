@@ -284,3 +284,126 @@ test('parsePrices reads enabled services in rial', () => {
   assert.equal(q.names[2], 'اکوپلاس');
   assert.equal(q.ttl, 290);
 });
+
+const tapsiPreview = {
+  result: 'OK',
+  data: {
+    ttl: 60,
+    tabs: [
+      { key: 'CAR', title: 'ماشین', items: [
+        { service: { key: 'STANDARD', isAvailable: true, defaultPriceStep: 0, prices: [{ passengerShare: 239000 }, { passengerShare: 264000 }] } },
+        { service: { key: 'WAIT_AND_SAVE', isAvailable: true, defaultPriceStep: 0, prices: [{ passengerShare: 215000 }] } },
+        { service: { key: 'PLUS', isAvailable: false, defaultPriceStep: 0, prices: [{ passengerShare: 287000 }] } },
+      ] },
+      { key: 'MOTO_TAXI', title: 'موتور', items: [{ service: { key: 'TAPSI_MOTO', isAvailable: true, defaultPriceStep: 0, prices: [{ passengerShare: 209000 }] } }] },
+      { key: 'DELIVERY', title: 'ارسال بسته', items: [{ service: { key: 'DELIVERY', isAvailable: true, defaultPriceStep: 0, prices: [{ passengerShare: 284000 }] } }] },
+    ],
+  },
+};
+
+test('parseTapsiPrices converts toman to rial and reads the default price step', () => {
+  const q = C.parseTapsiPrices(tapsiPreview, 1);
+  assert.deepEqual(q.prices, { 1: 2390000, 2: 2150000 }); // PLUS is not available
+  assert.equal(q.names[1], 'عادی');
+  assert.equal(q.ttl, 60);
+  assert.deepEqual(q.categories.map((c) => c.id), [1, 2]); // delivery is never offered
+  assert.deepEqual(C.parseTapsiPrices(tapsiPreview, 2).prices, { 11: 2090000 });
+});
+
+test('parseTapsiPrices copes with an unexpected response', () => {
+  const q = C.parseTapsiPrices({ data: {} }, 1);
+  assert.deepEqual(q.prices, {});
+  assert.deepEqual(C.parseTapsiPrices(null, 1).categories, []);
+});
+
+test('tapsiPriceBody puts origin and every destination as latitude/longitude numbers', () => {
+  const b = C.tapsiPriceBody([{ lat: '35.7', lng: '51.4' }, { lat: 35.6, lng: 51.3 }, { lat: 35.5, lng: 51.2 }], 1000000);
+  assert.deepEqual(b.origin, { latitude: 35.7, longitude: 51.4 });
+  assert.equal(b.destinations.length, 2);
+  assert.deepEqual(b.destinations[1], { latitude: 35.5, longitude: 51.2 });
+  assert.equal(b.gateway, 'CAB');
+  const t = b.metadata.ttpEvents;
+  assert.ok(t.destinationSelectedAt < t.cabSelectedAt && t.cabSelectedAt < t.originSelectedAt);
+});
+
+test('search: walking budgets are per end, and 0 leaves an end alone', async () => {
+  const seen = [];
+  const quote = async (points) => { seen.push(points); return fakeQuote([])(points); };
+  const run = (budgets) => C.search({ route: { points: [start, start], category: 1 }, budgets, delay: 0, quote, getFeatures: async () => features });
+
+  const onlyDest = await run({ origin: 0, dest: 150 });
+  assert.equal(onlyDest.error, undefined);
+  assert.equal(onlyDest.origins.length, 0);
+  assert.ok(onlyDest.dests.length > 0);
+  assert.ok(seen.every((p) => p[0] === start), 'the origin is never moved');
+
+  seen.length = 0;
+  const onlyOrigin = await run({ origin: 150, dest: 0 });
+  assert.equal(onlyOrigin.dests.length, 0);
+  assert.ok(onlyOrigin.origins.length > 0);
+  assert.ok(seen.every((p) => p[1] === start), 'the destination is never moved');
+
+  const mixed = await run({ origin: 60, dest: 150 });
+  assert.deepEqual(mixed.budgets, { origin: 60, dest: 150 });
+  assert.ok(mixed.origins.every((c) => c.walk <= 60));
+  assert.ok(mixed.dests.every((c) => c.walk <= 150));
+  assert.ok(mixed.dests.some((c) => c.walk > 60), 'the destination reaches farther than the origin');
+
+  seen.length = 0;
+  const none = await run({ origin: 0, dest: 0 });
+  assert.equal(none.error, 'nothing');
+  assert.equal(seen.length, 0, 'nothing to search, nothing quoted');
+});
+
+test('search: a refused candidate is skipped, a refused base price ends the search', async () => {
+  const base = fakeQuote([]);
+  let n = 0;
+  const flaky = async (points) => {
+    if (n++ === 3) throw new C.SearchError('unavailable');
+    return base(points);
+  };
+  const res = await C.search({ route: { points: [start, start], category: 1 }, budget: 150, delay: 0, quote: flaky, getFeatures: async () => features });
+  assert.equal(res.error, undefined);
+  assert.ok(res.origins.length + res.dests.length > 0);
+
+  const refused = await C.search({ route: { points: [start, start], category: 1 }, budget: 150, delay: 0, getFeatures: async () => features,
+    quote: async () => { throw new C.SearchError('unavailable'); } });
+  assert.equal(refused.error, 'unavailable');
+});
+
+test('normalizeBudgets migrates the old single distance and keeps one end searchable', () => {
+  const ok = [100, 200, 300];
+  assert.deepEqual(C.normalizeBudgets({ budget: 300 }, ok), { origin: 300, dest: 300 });
+  assert.deepEqual(C.normalizeBudgets({}, ok), { origin: 200, dest: 200 });
+  assert.deepEqual(C.normalizeBudgets({ budgets: { origin: 0, dest: 100 } }, ok), { origin: 0, dest: 100 });
+  assert.deepEqual(C.normalizeBudgets({ budgets: { origin: 0, dest: 0 } }, ok), { origin: 200, dest: 200 });
+  assert.deepEqual(C.normalizeBudgets({ budgets: { origin: 150 } }, ok), { origin: 200, dest: 200 });
+});
+
+test('tapsi route: read from the URL, rewritten for apply, other parameters kept', () => {
+  const search = '?origin=%5B51.4%2C35.7%5D&destinations=%5B%5B51.3%2C35.6%5D%2C%5B51.2%2C35.5%5D%5D&x=1';
+  const pts = C.tapsiRoutePoints(search);
+  assert.deepEqual(pts, [{ lat: 35.7, lng: 51.4 }, { lat: 35.6, lng: 51.3 }, { lat: 35.5, lng: 51.2 }]);
+  const moved = pts.slice();
+  moved[0] = { lat: 35.71, lng: 51.41 };
+  const next = C.tapsiRouteSearch(search, moved);
+  const back = C.tapsiRoutePoints('?' + next);
+  assert.deepEqual(back[0], { lat: 35.71, lng: 51.41 });
+  assert.deepEqual(back.slice(1), pts.slice(1), 'stops and destination are not touched');
+  assert.equal(new URLSearchParams(next).get('x'), '1');
+  assert.equal(C.tapsiRoutePoints('?origin=oops'), null);
+  assert.equal(C.tapsiRoutePoints(''), null);
+});
+
+test('reachText says what is searched at each end', () => {
+  assert.match(C.reachText({ origin: 200, dest: 200 }), /^تا /);
+  assert.match(C.reachText({ origin: 0, dest: 200 }), /^فقط مقصد/);
+  assert.match(C.reachText({ origin: 100, dest: 0 }), /^فقط مبدا/);
+  assert.match(C.reachText({ origin: 100, dest: 300 }), /^مبدا تا .* و مقصد تا /);
+});
+
+test('parseTapsiPrices labels an unknown service in Persian', () => {
+  const json = { data: { tabs: [{ key: 'CAR', title: 'ماشین', items: [{ service: { key: 'SOME_NEW_SERVICE', isAvailable: true, defaultPriceStep: 0, prices: [{ passengerShare: 100000 }] } }] }] } };
+  const q = C.parseTapsiPrices(json, 1);
+  assert.deepEqual(Object.values(q.names), ['سرویس دیگر']);
+});

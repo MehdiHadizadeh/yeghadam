@@ -1,18 +1,27 @@
 /*
- * Yeghadam page layer. Runs inside app.snapp.taxi: as the extension content script (page world) or inside the Android
- * WebView. Needs YeghadamCore (src/core.js) loaded first.
- * Network: POST /api/v3/price with the user's own token, and GET public map tiles from tile.snappmaps.ir.
+ * Yeghadam page layer. Runs inside app.snapp.taxi or app.tapsi.cab: as the extension content script (page world) or
+ * inside the Android WebView. Needs YeghadamCore (src/core.js) loaded first.
+ * Snapp network: POST /api/v3/price with the user's own token, and GET public map tiles from tile.snappmaps.ir.
+ * Tapsi network: POST /api/v3.1/ride/preview with the page's own session cookie, and GET the public map tiles named by
+ * Tapsi's own map style.
  * It never requests a ride.
  */
 (() => {
   'use strict';
-  if (window.__YEGHADAM__ || location.hostname !== 'app.snapp.taxi') return;
+  const TAPSI = location.hostname === 'app.tapsi.cab';
+  if (window.__YEGHADAM__ || (location.hostname !== 'app.snapp.taxi' && !TAPSI)) return;
   window.__YEGHADAM__ = true;
 
   const C = window.YeghadamCore;
   const NATIVE = window.YeghadamNative || null;
-  const PRICE_PATH = '/api/v3/price';
+  const NAME = TAPSI ? 'تپسی' : 'اسنپ';
+  const PRICE_PATH = TAPSI ? '/api/v3.1/ride/preview' : '/api/v3/price';
   const TILE_URL = 'https://tile.snappmaps.ir/data/v4/';
+  // The app version Tapsi sends in its x-agent header (its bundle builds the header the same way). The default is the
+  // version this was written against; the page's own analytics requests carry the live one, which replaces it.
+  let tapsiVersion = '7.87.1';
+  const noteTapsiVersion = (body) => { const m = /"appVersion":"(\d+(?:\.\d+)*)"/.exec(body); if (m) tapsiVersion = m[1]; };
+  const tapsiAgent = () => `v2.2|passenger|WEBAPP|${tapsiVersion}||${String(navigator.appVersion || '').split(' ')[0]}`;
   const SETTINGS_KEY = 'yeghadam:settings';
   const ROUTE_KEY = 'yeghadam:route';
   const BUDGETS = [100, 200, 300];
@@ -25,14 +34,15 @@
   const cat = () => (settings.category === BIKE && bikeOffered() ? BIKE : CAR);
 
   const nativeFetch = window.fetch.bind(window);
-  const defaults = { budget: 200, category: CAR, services: {}, seenGuide: false };
+  const defaults = { budgets: { origin: 200, dest: 200 }, category: CAR, services: {}, seenGuide: false };
   let settings = Object.assign({}, defaults, safeJSON(lsGet(SETTINGS_KEY)) || {});
   if (settings.category !== CAR && settings.category !== BIKE) settings.category = CAR;
   if (!settings.services || typeof settings.services !== 'object') settings.services = {};
+  settings.budgets = C.normalizeBudgets(settings, BUDGETS);
 
   const state = {
-    route: carRoute(safeJSON(ssGet(ROUTE_KEY))), // { points, category, t }
-    snapp: null,        // Snapp's own latest quote for state.route: { prices, names }
+    route: TAPSI ? null : carRoute(safeJSON(ssGet(ROUTE_KEY))), // { points, category, t }
+    snapp: null,        // the service's own latest quote for state.route: { prices, names }
     map: null,
     running: false,
     cancel: false,
@@ -41,8 +51,7 @@
     selected: null,     // candidate highlighted on the map
     error: null,
     sheet: false,
-    setup: true,        // show budget chips / cap in the sheet
-    capText: '',
+    setup: true,        // show the walking-distance chips in the sheet
     probe: null,        // long-press quote: { kind, lat, lng, walk, dir, prices, base, approx }
     apply: null,        // { steps: [{ kind, c }], i, phase: 'fly'|'confirm'|'manual' }
     applied: null,
@@ -73,9 +82,15 @@
   const routeKey = (r) => (r ? r.points.map((p) => (+p.lat).toFixed(5) + ',' + (+p.lng).toFixed(5)).join(';') + '|' + r.category : '');
 
   /* ---------------- watch Snapp's own price requests ---------------- */
+  const isPriceUrl = (url) => url.includes(PRICE_PATH) && !url.includes('/transparency');
   function onSnappRequest(bodyText) {
     try {
       const b = JSON.parse(bodyText);
+      if (TAPSI) {
+        if (!b.origin || !Array.isArray(b.destinations) || !b.destinations.length) return null;
+        const ll = (p) => ({ lat: +p.latitude, lng: +p.longitude });
+        return { points: [ll(b.origin)].concat(b.destinations.map(ll)), category: CAR, t: Date.now() };
+      }
       if (!Array.isArray(b.points) || b.points.length < 2) return null;
       const cats = Array.isArray(b.categories) ? b.categories.map(Number) : [CAR];
       if (!cats.includes(CAR)) return null; // delivery and motorbike quotes do not change the car route
@@ -84,6 +99,10 @@
   }
   function onSnappResponse(route, json) {
     if (!route) return;
+    if (TAPSI) {
+      setTimeout(() => onRoute(route, json && json.data ? C.parseTapsiPrices(json, CAR) : null), 0);
+      return;
+    }
     const services = json && json.data && json.data.services;
     if (Array.isArray(services)) json.data.services = services.filter((s) => s.category_id == null || s.category_id === CAR);
     setTimeout(() => onRoute(route, json ? C.parsePrices(json) : null), 0);
@@ -92,7 +111,8 @@
     let route = null;
     try {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (url.includes(PRICE_PATH) && init && typeof init.body === 'string') route = onSnappRequest(init.body);
+      if (isPriceUrl(url) && init && typeof init.body === 'string') route = onSnappRequest(init.body);
+      else if (TAPSI && url.includes('/actionlog/send') && init && typeof init.body === 'string') noteTapsiVersion(init.body);
     } catch (e) {}
     const p = nativeFetch(input, init);
     if (route) p.then((r) => r.clone().json()).then((j) => onSnappResponse(route, j), () => onSnappResponse(route, null));
@@ -102,7 +122,7 @@
   XMLHttpRequest.prototype.open = function (m, u) { this.__yeghadamUrl = String(u || ''); return xOpen.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function (body) {
     try {
-      if (this.__yeghadamUrl && this.__yeghadamUrl.includes(PRICE_PATH) && typeof body === 'string') {
+      if (this.__yeghadamUrl && isPriceUrl(this.__yeghadamUrl) && typeof body === 'string') {
         const route = onSnappRequest(body);
         if (route) this.addEventListener('loadend', () => onSnappResponse(route, safeJSON(this.responseText)));
       }
@@ -129,7 +149,25 @@
     }
     return out;
   }
+  // Tapsi keeps the route in the URL: /preview?origin=[lng,lat]&destinations=[[lng,lat],...]
+  const onTapsiPreview = () => location.pathname.startsWith('/preview');
+  const tapsiUrlPoints = () => (onTapsiPreview() ? C.tapsiRoutePoints(location.search) : null);
+  function tapsiConfirmedRoute() {
+    const pts = tapsiUrlPoints();
+    if (!pts) return null;
+    const key = routeKey({ points: pts, category: CAR });
+    // newest quoted request for exactly this route, else the route already tracked, else a bare one
+    const same = state.route && routeKey(state.route) === key;
+    for (let i = recent.length - 1; i >= 0; i--) {
+      if (!recent[i].quote || routeKey(recent[i]) !== key) continue;
+      if (!same) return recent[i];
+      state.route.quote = recent[i].quote; // the page re-quotes every few seconds: same route, newer prices
+      return state.route;
+    }
+    return same ? state.route : { points: pts, category: CAR, t: Date.now() };
+  }
   function confirmedRoute() {
+    if (TAPSI) return tapsiConfirmedRoute();
     const map = state.map;
     if (!map) return recent[recent.length - 1] || null; // no map yet: best guess
     const o = markerPx('origin'), d = markerPx('dest');
@@ -144,7 +182,7 @@
   }
   function syncRoute() {
     const route = confirmedRoute();
-    if (!route) return;
+    if (!route) { if (TAPSI && state.route) { state.route = null; emit(); } return; }
     if (route.quote) state.snapp = Object.assign({}, route.quote, { key: routeKey(route) });
     if (route === state.route) return;
     state.route = route;
@@ -154,7 +192,7 @@
     if (state.resultKey && key !== state.resultKey) {
       if (state.running) state.cancel = true;
       state.result = null; state.resultKey = ''; state.selected = null; state.error = null;
-      state.probe = null; state.applied = null; state.setup = true; state.capText = '';
+      state.probe = null; state.applied = null; state.setup = true;
       drawMap();
     }
     emit();
@@ -176,15 +214,58 @@
       };
     }
   }
-  if (window.mapboxgl) patchMapbox(window.mapboxgl);
-  else {
-    try {
-      let mb;
-      Object.defineProperty(window, 'mapboxgl', { configurable: true, enumerable: true, get() { return mb; }, set(v) { mb = v; try { patchMapbox(v); } catch (e) {} } });
-    } catch (e) {}
+  if (TAPSI) {
+    // Tapsi bundles MapLibre (no global), but its React tree holds the Map in a context value. Each page of the flow
+    // (origin, destination, preview) builds its own map, so look again whenever the current one left the document.
+    const isMap = (o) => o && typeof o === 'object' && typeof o.getCenter === 'function' && typeof o.project === 'function' && typeof o.getContainer === 'function';
+    const findTapsiMap = () => {
+      const el = document.querySelector('.maplibregl-map');
+      if (!el) return null;
+      const fk = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+      if (!fk) return null;
+      const seen = new Set();
+      const scan = (o, d) => {
+        if (!o || typeof o !== 'object' || d > 4 || seen.has(o)) return null;
+        seen.add(o);
+        if (isMap(o)) return o;
+        let keys;
+        try { keys = Object.keys(o).slice(0, 40); } catch (e) { return null; }
+        for (const k of keys) {
+          let v;
+          try { v = o[k]; } catch (e) { continue; }
+          const m = scan(v, d + 1);
+          if (m) return m;
+        }
+        return null;
+      };
+      let f = el[fk], n = 0;
+      while (f && n++ < 60) {
+        const m = scan(f.memoizedProps, 0) || scan(f.memoizedState, 0);
+        // the context holds a react-map-gl style handle; getMap() returns the MapLibre Map itself
+        const real = m && (typeof m.getMap === 'function' ? m.getMap() : m);
+        if (real && real.getContainer() === el) return real;
+        f = f.return;
+      }
+      return null;
+    };
+    setInterval(() => {
+      try {
+        if (state.map && document.contains(state.map.getContainer())) return;
+        const m = findTapsiMap();
+        if (m && m !== state.map) { badgeSig = ''; clearBadges(); state.map = m; onMapFound(m); }
+      } catch (e) {}
+    }, 1000);
+  } else {
+    if (window.mapboxgl) patchMapbox(window.mapboxgl);
+    else {
+      try {
+        let mb;
+        Object.defineProperty(window, 'mapboxgl', { configurable: true, enumerable: true, get() { return mb; }, set(v) { mb = v; try { patchMapbox(v); } catch (e) {} } });
+      } catch (e) {}
+    }
+    let pollN = 0;
+    const poll = setInterval(() => { if (window.mapboxgl) patchMapbox(window.mapboxgl); if (state.map || ++pollN > 240) clearInterval(poll); }, 500);
   }
-  let pollN = 0;
-  const poll = setInterval(() => { if (window.mapboxgl) patchMapbox(window.mapboxgl); if (state.map || ++pollN > 240) clearInterval(poll); }, 500);
 
   let needsDraw = false;
   function onMapFound(map) {
@@ -229,21 +310,30 @@
     if (typeof j === 'string') t = j;
     return /^bearer /i.test(t) ? t : 'Bearer ' + t;
   }
+  // Signed in? Snapp keeps a bearer token in localStorage; Tapsi's session cookie is not readable, so use its own flag.
+  const signedIn = () => (TAPSI ? lsGet('isSignedIn') === 'true' : !!authHeader());
   async function quote(points) {
-    const body = JSON.stringify(C.priceBody(points, cat()));
+    const body = JSON.stringify(TAPSI ? C.tapsiPriceBody(points) : C.priceBody(points, cat()));
     for (let attempt = 0; attempt < 4; attempt++) {
       if (state.cancel) throw new C.SearchError('cancel');
-      const auth = authHeader();
-      if (!auth) throw new C.SearchError('auth');
+      const auth = TAPSI ? null : authHeader();
+      if (!TAPSI && !auth) throw new C.SearchError('auth');
+      const headers = TAPSI ? { 'content-type': 'application/json', 'x-agent': tapsiAgent() } : { 'content-type': 'application/json', authorization: auth };
       let r;
       try {
-        r = await nativeFetch(PRICE_PATH, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', authorization: auth }, body });
+        r = await nativeFetch(TAPSI ? 'https://api.tapsi.cab' + PRICE_PATH : PRICE_PATH, { method: 'POST', credentials: 'include', headers, body });
       } catch (e) { await sleep(1500 * (attempt + 1)); continue; }
       if (r.status === 401 || r.status === 403) throw new C.SearchError('auth');
-      if (r.status === 400) throw new C.SearchError('unavailable'); // e.g. no motorbikes on this route
+      if (r.status === 400) throw new C.SearchError('unavailable'); // e.g. no motorbikes on this route, or a point the service refuses
       if (r.status === 429) { await sleep(3000 * (attempt + 1)); continue; }
       if (!r.ok) { await sleep(1000 * (attempt + 1)); continue; }
       const json = await r.json().catch(() => null);
+      if (TAPSI) {
+        if (!json || !json.data || !Array.isArray(json.data.tabs)) throw new C.SearchError('changed');
+        const q = C.parseTapsiPrices(json, cat());
+        if (!q.categories.some((c) => c.id === cat())) throw new C.SearchError('unavailable');
+        return q;
+      }
       if (!json || !json.data || !Array.isArray(json.data.services)) throw new C.SearchError('changed');
       return C.parsePrices(json);
     }
@@ -251,12 +341,23 @@
     throw new C.SearchError('rate');
   }
 
+  // Tapsi's tile URL carries a release stamp that changes; read it from the map's own style instead of hardcoding it.
+  let tapsiTemplate = null;
+  function tapsiTileUrl(t) {
+    if (!tapsiTemplate) {
+      const src = state.map && state.map.getStyle && state.map.getStyle().sources.openmaptiles;
+      if (!src) return Promise.reject(new Error('no style'));
+      tapsiTemplate = (src.tiles && src.tiles[0] ? Promise.resolve(src.tiles[0]) : nativeFetch(src.url, { credentials: 'omit' }).then((r) => r.json()).then((j) => j.tiles[0]))
+        .catch((e) => { tapsiTemplate = null; throw e; });
+    }
+    return tapsiTemplate.then((tpl) => tpl.replace('{z}', t.z).replace('{x}', t.x).replace('{y}', t.y));
+  }
   const tiles = new Map();
   function loadTile(t) {
     const k = t.z + '/' + t.x + '/' + t.y;
     if (!tiles.has(k)) {
       if (tiles.size > 24) tiles.delete(tiles.keys().next().value);
-      const p = nativeFetch(TILE_URL + k + '.pbf')
+      const p = (TAPSI ? tapsiTileUrl(t).then((u) => nativeFetch(u, { credentials: 'omit' })) : nativeFetch(TILE_URL + k + '.pbf'))
         .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('tile ' + r.status))))
         .then((b) => C.decodeTile(new Uint8Array(b), t));
       p.catch(() => tiles.delete(k));
@@ -327,9 +428,10 @@
     emit(); drawMap();
     const res = await C.search({
       route: { points: state.route.points, category: cat() },
-      budget: settings.budget,
+      budgets: settings.budgets,
       serviceId: settings.services[cat()] || undefined,
       quote, getFeatures,
+      delay: TAPSI ? 500 : undefined, // Tapsi's limits are unknown: go slower than the Snapp pace
       isCancelled: () => state.cancel,
       onProgress: (r) => { if (state.resultKey === keyOf(r)) { ensureIds(r); state.result = r; scheduleDraw(); emit(); } },
     });
@@ -374,7 +476,7 @@
     const dO = C.distance(p, O), dD = C.distance(p, D);
     if (Math.min(dO, dD) > 600) { notify('نزدیک مبدا یا مقصد نگه دار.'); return; }
     const wait = waitFor('probe');
-    if (wait) { notify(`برای امنیت حسابت، ${fa(wait)} دقیقهٔ دیگه دوباره امتحان کن.`); return; }
+    if (wait) { notify(`برای امنیت حسابت، ${fa(wait)} دقیقه دیگه دوباره امتحان کن.`); return; }
     noteUsage('probe');
     const kind = dO <= dD ? 'origin' : 'dest', from = kind === 'origin' ? O : D;
     const pr = C.projector(from), [x, y] = pr.xy(p.lng, p.lat);
@@ -405,7 +507,7 @@
     const map = state.map;
     if (!map) return;
     try {
-      if (!map.style || !map.style._loaded) { needsDraw = true; return; }
+      if (!map.style || !(map.style._loaded || (map.isStyleLoaded && map.isStyleLoaded()))) { needsDraw = true; return; }
       needsDraw = false;
       const r = state.result, s = sid();
       const pts = { type: 'FeatureCollection', features: [] }, paths = { type: 'FeatureCollection', features: [] };
@@ -452,22 +554,46 @@
     } catch (e) { needsDraw = true; console.warn('[yeghadam] draw', e); }
   }
   // Numbered badges on the map, matching the result cards (1, 2, 3).
-  let badges = [], badgeSig = '';
+  let badges = [], badgeSig = '', badgeLayer = null;
+  function clearBadges() {
+    badges.forEach((m) => { try { m.remove(); } catch (e) {} });
+    badges = [];
+    if (badgeLayer) { try { badgeLayer.remove(); } catch (e) {} badgeLayer = null; }
+  }
+  // Tapsi's MapLibre Marker class is not reachable, so badges are plain elements laid over the map and re-placed on move.
+  function overlayBadge(map, el, lng, lat) {
+    if (!badgeLayer || !badgeLayer.isConnected) {
+      badgeLayer = document.createElement('div');
+      badgeLayer.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:5';
+      map.getContainer().appendChild(badgeLayer);
+    }
+    el.style.position = 'absolute';
+    el.style.pointerEvents = 'auto';
+    badgeLayer.appendChild(el);
+    const place = () => {
+      try {
+        const p = map.project([lng, lat]);
+        el.style.transform = `translate(${Math.round(p.x - el.offsetWidth / 2)}px,${Math.round(p.y - el.offsetHeight - 8)}px)`;
+      } catch (e) {}
+    };
+    place();
+    map.on('move', place);
+    return { remove() { try { map.off('move', place); } catch (e) {} el.remove(); } };
+  }
   function drawBadges() {
     const map = state.map, mb = window.mapboxgl;
     const want = state.result && state.result.base && !state.running && !state.apply && !state.away ? currentCards().map((k, i) => ({ card: k.c, at: k.c.kind === 'both' ? k.c.dest : k.c, n: i + 1 })) : [];
     const sig = want.map((w) => w.card.id + (w.card === state.selected ? '*' : '')).join(',');
     if (sig === badgeSig) return;
     badgeSig = sig;
-    badges.forEach((m) => m.remove());
-    badges = [];
-    if (!map || !mb || !mb.Marker) return;
+    clearBadges();
+    if (!map || (!TAPSI && (!mb || !mb.Marker))) return;
     for (const w of want) {
       const on = w.card === state.selected, el = document.createElement('div');
       el.textContent = fa(w.n);
       el.style.cssText = `width:${on ? 32 : 28}px;height:${on ? 32 : 28}px;border-radius:50%;box-sizing:border-box;border:2.5px solid #15192e;background:${on ? '#c5f04a' : '#fff'};color:#15192e;font:800 ${on ? 15 : 13.5}px/1 ${FONT};display:grid;place-items:center;box-shadow:0 6px 14px -4px rgba(15,18,40,.5);cursor:pointer`;
       el.addEventListener('click', (e) => { e.stopPropagation(); state.selected = w.card; state.sheet = true; state.setup = false; drawMap(); emit(); if (phone()) moveMapTo(w.at, null, true); });
-      badges.push(new mb.Marker({ element: el, anchor: 'bottom', offset: [0, -8] }).setLngLat([w.at.lng, w.at.lat]).addTo(map));
+      badges.push(TAPSI ? overlayBadge(map, el, w.at.lng, w.at.lat) : new mb.Marker({ element: el, anchor: 'bottom', offset: [0, -8] }).setLngLat([w.at.lng, w.at.lat]).addTo(map));
     }
   }
   // lift: centre the point in the part of the map left visible above the phone's bottom sheet. The guided apply
@@ -517,7 +643,21 @@
     el.dispatchEvent(new MouseEvent('click', o));
   }
   function stepsFor(c) { return c.kind === 'both' ? [{ kind: 'origin', c: c.origin }, { kind: 'dest', c: c.dest }] : [{ kind: c.kind, c }]; }
+  // Tapsi keeps the route in the URL, so applying a point is opening the same preview page with new coordinates: no pin
+  // to drag or confirm. The page's router picks the change up and prices the new route itself.
+  function applyTapsi(c) {
+    const pts = state.route.points.slice();
+    for (const s of stepsFor(c)) pts[s.kind === 'origin' ? 0 : pts.length - 1] = { lat: s.c.lat, lng: s.c.lng };
+    if (state.running) state.cancel = true; // the route changes here, so the search for the old one is moot
+    history.pushState(history.state, '', location.pathname + '?' + C.tapsiRouteSearch(location.search, pts));
+    window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+    state.resultKey = routeKey({ points: pts, category: CAR }); // the result now describes the applied route; keep showing it
+    state.applied = c; state.sheet = false; state.probe = null; state.selected = null;
+    notify('اعمال شد. قیمت تازه توی تپسیه.');
+    syncRoute(); emit(); drawMap();
+  }
   function startApply(c) {
+    if (TAPSI) { applyTapsi(c); return; }
     state.apply = { steps: stepsFor(c), i: 0, phase: 'fly', target: c };
     state.sheet = false; state.probe = c.probe ? c : null;
     emit();
@@ -557,7 +697,7 @@
     state.apply = null;
     state.applied = a.target;
     state.resultKey = routeKey(route); // the result now describes the applied route; keep showing it
-    notify('اعمال شد. حالا برو سر نقطهٔ جدید؛ قیمت تازه توی اسنپه.');
+    notify('اعمال شد. حالا برو سر نقطه جدید؛ قیمت تازه توی اسنپه.');
   }
   function cancelApply() { state.apply = null; emit(); }
 
@@ -565,12 +705,7 @@
   const fa = (n) => Number(n).toLocaleString('fa-IR');
   const toman = (rial) => (isFinite(rial) ? fa(Math.round(rial / 10)) + ' تومان' : '—');
   const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-  function parseToman(s) {
-    const d = String(s || '').replace(/[۰-۹]/g, (c) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(c)).replace(/[٠-٩]/g, (c) => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/\D/g, '');
-    const n = +d;
-    if (!n) return 0;
-    return n < 1000 ? n * 1000 : n; // "160" means 160,000 toman
-  }
+  const reach = (b) => C.reachText(b);
   const ROAD = { primary: 'خیابان', secondary: 'خیابان', tertiary: 'خیابان', minor: 'کوچه', service: 'کوچه' };
   function placeText(c) {
     if (c.approx) return `${fa(c.walk)} متر ${c.dir} (خط هوایی)`;
@@ -579,12 +714,13 @@
   }
   const TAG = { nearest: 'نزدیک‌ترین', balanced: 'متعادل', cheapest: 'ارزون‌ترین', best: 'بهترین' };
   const ERR = {
-    auth: 'وارد اکانت اسنپ نیستی یا نشستت تموم شده. یک بار خارج و دوباره وارد شو.',
-    rate: 'اسنپ موقتاً استعلام‌ها رو محدود کرده. چند دقیقه بعد دوباره امتحان کن.',
+    auth: `وارد حساب ${NAME} نیستی یا نشستت تموم شده. یک بار خارج شو و دوباره وارد شو.`,
+    rate: `${NAME} موقتاً استعلام‌ها رو محدود کرده. چند دقیقه بعد دوباره امتحان کن.`,
     noprice: 'برای این مسیر قیمتی برنگشت.',
-    budget: 'سقف تعداد استعلام پر شد.',
-    unavailable: 'اسنپ این سرویس رو برای این مسیر نداره.',
-    changed: 'اسنپ چیزی رو عوض کرده و این نسخه دیگه درست قیمت نمی‌گیره. نسخهٔ جدید رو نصب کن.',
+    budget: 'تعداد استعلام‌های مجاز این جستجو تموم شد.',
+    nothing: 'یکی از مبدا یا مقصد رو باید بگردی.',
+    unavailable: `${NAME} این سرویس رو برای این مسیر نداره.`,
+    changed: `${NAME} چیزی رو عوض کرده و این نسخه دیگه درست قیمت نمی‌گیره. نسخه جدید رو نصب کن.`,
     slow: 'برای امنیت حسابت، جستجوی بعدی رو کمی بعد انجام بده.',
     unknown: 'خطای غیرمنتظره. دوباره امتحان کن.',
   };
@@ -668,11 +804,10 @@
   .seg.sm button{min-height:32px;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px}
   .seg.sm button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(15,18,40,.16)}
   .seg.sm + .seg.sm{margin-top:6px}
-  .fld{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 12px;border:1.5px solid var(--line);border-radius:12px;background:#fff;transition:border-color .15s}
-  .fld:focus-within{border-color:var(--ink)}
-  .fld input{flex:1;min-width:0;border:0;outline:0;font:inherit;font-size:14px;color:var(--ink);background:none;direction:rtl;caret-color:var(--ink)}
-  .fld input::placeholder{color:var(--mute);opacity:1}
-  .fld .u{font-size:12.5px;color:var(--mute);white-space:nowrap}
+  .brow{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .brow>span{width:38px;flex:none;font-size:13px;font-weight:700;color:var(--ink2)}
+  .brow .seg{flex:1;min-width:0}
+  .brow .seg button{white-space:nowrap;padding:0 2px;font-size:13px}
   .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:46px;border-radius:14px;font-size:15px;font-weight:800;
     background:var(--ink);color:#fff;text-align:center;transition:transform .12s,background .15s}
   .btn:active{transform:scale(.985)}
@@ -860,9 +995,7 @@
     document.body.appendChild(host);
     root.addEventListener('click', onClick);
     layout();
-    root.addEventListener('input', onInput);
     root.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && e.target.id === 'cap') { e.preventDefault(); startRun(); }
       if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('card')) { e.preventDefault(); e.target.click(); }
       if (state.guide == null) return;
       if (e.key === 'Escape') closeGuide();
@@ -941,6 +1074,7 @@
   // destination, another page) removes them, so the pill and panel go with it. Without the map (it was not found),
   // fall back to how recent the route is.
   function routeOnScreen() {
+    if (TAPSI) return !!state.route && onTapsiPreview();
     const map = state.map;
     if (!map) return !!state.route && Date.now() - state.route.t < 30 * 60 * 1000;
     try {
@@ -960,9 +1094,10 @@
       const done = r ? r.requests : 0, total = r && r.planned ? r.planned : 0;
       return { cls: '', spin: true, text: `در حال بررسی ${total ? fa(done) + ' از ' + fa(total) : '…'}` };
     }
-    if (state.compat) return { cls: 'bad', text: 'یه‌قدم: نسخهٔ جدید لازمه' };
+    if (state.compat) return { cls: 'bad', text: 'یه‌قدم: نسخه جدید لازمه' };
     if (state.error) return { cls: 'bad', text: 'یه‌قدم: خطا، بزن تا ببینی' };
     if (state.applied) return { cls: '', text: 'اعمال شد' };
+    if (resultFresh() && priceMoved()) return { cls: '', text: 'قیمت عوض شد، دوباره بگرد' };
     if (resultFresh()) {
       const top = currentCards();
       if (top.length) {
@@ -975,7 +1110,7 @@
     return null;
   }
   function pillHTML() {
-    if (state.apply || state.probe || !authHeader() || !onPricePage()) return '';
+    if (state.apply || state.probe || !signedIn() || !onPricePage()) return '';
     const s = status();
     if (!s) return '';
     return `<button class="pill ${s.cls}" data-a="open" aria-label="باز کردن یه‌قدم">${s.spin ? '<span class="spin"></span>' : LOGO}<span>${s.html || esc(s.text)}</span></button>`;
@@ -992,10 +1127,9 @@
     const cats = offered.length > 1 ? `<div class="seg sm" role="group" aria-label="نوع سفر">${offered.map((c) => `<button class="${cat() === c.id ? 'on' : ''}" data-a="cat" data-k="${c.id}" aria-pressed="${cat() === c.id}">${esc(c.name)}</button>`).join('')}</div>` : '';
     const sw = cat() === CAR && state.snapp ? serviceSwitch(state.snapp.prices, state.snapp.names) : '';
     const pick = cats || sw ? `<div class="lbl">مقایسه با</div>${cats}${sw}` : '';
+    const row = (end, label) => `<div class="brow"><span>${label}</span><div class="seg" role="group" aria-label="فاصله پیاده‌روی از ${label}">${[0].concat(BUDGETS).map((b) => `<button class="${settings.budgets[end] === b ? 'on' : ''}" data-a="budget" data-k="${end}:${b}" aria-pressed="${settings.budgets[end] === b}"${b ? '' : ` aria-label="${label} همین‌جا بمونه"`}>${b ? fa(b) + ' متر' : 'همین‌جا'}</button>`).join('')}</div></div>`;
     return `<div class="lbl">تا کجا حاضری پیاده بری؟</div>
-      <div class="seg" role="group" aria-label="فاصلهٔ پیاده‌روی">${BUDGETS.map((b) => `<button class="${settings.budget === b ? 'on' : ''}" data-a="budget" data-k="${b}" aria-pressed="${settings.budget === b}">${fa(b)} متر</button>`).join('')}</div>
-      <label class="lbl" for="cap">سقف قیمت <small>اختیاری</small></label>
-      <div class="fld"><input id="cap" inputmode="numeric" autocomplete="off" enterkeyhint="search" placeholder="مثلاً ۱۶۰" value="${esc(state.capText)}"><span class="u">هزار تومان</span></div>
+      ${row('origin', 'مبدا')}${row('dest', 'مقصد')}
       ${pick}
       <div class="fine">${ICON.shield}<span>حدود ${fa(10)} ثانیه طول می‌کشه. فقط قیمت می‌پرسه؛ سفری ثبت نمی‌شه.</span></div>`;
   }
@@ -1012,66 +1146,75 @@
       <div class="c1"><span class="n">${fa(i + 1)}</span><span class="sv"><span>${toman(k.saving)} ارزون‌تر</span></span><span class="wk">${ICON.walk}${fa(c.walk)} متر</span></div>
       <div class="c2">${KIND_ICON[c.kind]}<span class="pl"><b>${KIND[c.kind]}:</b> ${esc(placeShort(c))}</span><span class="tag">${TAG[k.tag]}</span></div>
       <div class="c3"><span class="meta"><b>${toman(k.price)}</b></span>
-        <button class="nb" data-a="dismiss" data-k="${esc(c.id)}" title="این پیشنهاد رو نشون نده">نمی‌رم</button><button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال در اسنپ${ICON.next}</button></div>
+        <button class="nb" data-a="dismiss" data-k="${esc(c.id)}" title="این پیشنهاد رو نشون نده">نمی‌رم</button><button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال${ICON.next}</button></div>
     </div>`;
+  }
+
+  // Tapsi's own page re-quotes the open route every few seconds, so its current price costs nothing to read. Snapp's page
+  // does not, so there the search-time numbers are all there is.
+  // True when the live price of the searched route is no longer the price the search started from.
+  function priceMoved() {
+    const r = state.result;
+    if (!TAPSI || !r || !r.base || state.applied) return false;
+    const live = livePrice(sid());
+    return !!live && Math.abs(live - C.priceOf(r.base, sid())) >= C.MIN_SAVING;
+  }
+  function livePrice(s) {
+    const q = state.snapp;
+    if (!TAPSI || !q || !state.route || q.key !== routeKey(state.route) || !q.prices[s]) return null;
+    return q.prices[s];
   }
 
   function resultHTML() {
     const r = state.result, s = sid();
     let h = '';
     const bp = C.priceOf(r.base, s);
+    const live = livePrice(s);
     const age = state.running ? 0 : Math.floor((Date.now() - r.at) / 60000);
     const sw = serviceSwitch(r.base.prices, r.names);
-    h += `<div class="now">${sw}<div class="base"><small>قیمت الان</small><b>${toman(bp)}</b></div></div>`;
+    h += `<div class="now">${sw}<div class="base"><small>قیمت الان</small><b>${toman(live || bp)}</b></div></div>`;
+    if (state.applied && live) {
+      // the search described the route before the change; what matters now is the live price of the applied point
+      const saved = bp - live;
+      h += note('ok', `اعمال شد. قیمت الان ${toman(live)}؛ قبل از اعمال ${toman(bp)} بود${saved >= C.MIN_SAVING ? ` (${toman(saved)} ارزون‌تر)` : ''}. ${NAME} قیمت رو مدام به‌روز می‌کنه، پس این عدد زنده‌ست. <button class="lnk" data-a="run">دوباره بگرد</button>`, ICON.check);
+      return h;
+    }
+    if (priceMoved()) {
+      h += note('w', `قیمت ${NAME} عوض شده: موقع جستجو ${toman(bp)} بود، الان ${toman(live)}. صرفه کارت‌ها با قیمت قبلی حساب شده. <button class="lnk" data-a="run">دوباره بگرد</button>`, ICON.alert);
+    }
     if (age >= 5) h += note('w', `این قیمت‌ها مال ${fa(age)} دقیقه پیشه و احتمالاً عوض شده. <button class="lnk" data-a="run">دوباره بگرد</button>`, ICON.clock);
     else if (age >= 1) h += `<div class="age">قیمت‌ها مال ${fa(age)} دقیقه پیش.</div>`;
     if (r.drift && Math.abs(r.drift) >= C.MIN_SAVING) {
-      h += note('w', `قیمت اسنپ وسط جستجو ${toman(Math.abs(r.drift))} ${r.drift > 0 ? 'گرون' : 'ارزون'} شد. <button class="lnk" data-a="run">دوباره بگرد</button>`);
+      h += note('w', `قیمت ${NAME} وسط جستجو ${toman(Math.abs(r.drift))} ${r.drift > 0 ? 'گرون' : 'ارزون'} شد. <button class="lnk" data-a="run">دوباره بگرد</button>`);
     }
     if (r.baseLock && r.twin) {
       const left = Math.round(r.baseLock.left - (Date.now() - r.baseLock.at) / 1000);
       const now = C.priceOf(r.twin, s);
       if (left > 0 && now - bp >= C.MIN_SAVING) {
-        h += note('ok', `قیمتت قفل شده و از قیمت لحظه‌ای (${toman(now)}) ارزون‌تره. تا ${fa(Math.ceil(left / 60))} دقیقهٔ دیگه همینه؛ جابجا کردن پین قیمت تازه می‌گیره.`, ICON.lock);
+        h += note('ok', `قیمتت قفل شده و از قیمت لحظه‌ای (${toman(now)}) ارزون‌تره. تا ${fa(Math.ceil(left / 60))} دقیقه دیگه همینه؛ جابجا کردن پین قیمت تازه می‌گیره.`, ICON.lock);
       } else if (bp - now >= C.MIN_SAVING) {
         h += note('ok', `قیمت لحظه‌ای از قیمت قفل‌شده‌ات ارزون‌تر شده؛ یه جابجایی کوتاه پین قیمت تازه می‌گیره.`, ICON.lock);
       }
     }
-    if (r.approx.origin || r.approx.dest) h += note('w', 'نقشهٔ خیابان‌ها این‌جا نیومد؛ فاصله‌ها خط هوایی‌ان. قبل از اعمال روی نقشه ببین.');
-    h += capHTML(r, s, bp);
+    if (r.approx.origin || r.approx.dest) h += note('w', 'نقشه خیابان‌ها این‌جا نیومد؛ فاصله‌ها خط هوایی‌ان. قبل از اعمال روی نقشه ببین.');
     const cs = C.cards(r, s);
     if (cs.length) h += cs.map(cardHTML).join('');
     else if (!state.running) {
       const n = r.origins.length + r.dests.length;
       const spread = r.origins.concat(r.dests).filter((c) => isFinite(C.priceOf(c, s))).reduce((m, c) => Math.max(m, Math.abs(C.priceOf(c, s) - bp)), 0);
       const why = spread < 2 * C.MIN_SAVING ? ' این ساعت قیمت نقاط اطراف تقریباً یکیه؛ ساعت‌های شلوغ معمولاً تفاوت بیشتره.' : '';
-      h += note('ok', `<b>همین‌جا بهترینه.</b> ${fa(n)} نقطه تا ${fa(r.budget)} متر بررسی شد و هیچ‌کدوم دست‌کم ۱٬۰۰۰ تومان ارزون‌تر نبود.${why}`);
+      h += note('ok', `<b>همین‌جا بهترینه.</b> ${fa(n)} نقطه (${reach(r.budgets)}) بررسی شد و هیچ‌کدوم دست‌کم ۱٬۰۰۰ تومان ارزون‌تر نبود.${why}`);
     }
     return h;
-  }
-
-  // The price limit does not cut the search short; it answers one question about the full result:
-  // what is the shortest walk that gets the price under your limit?
-  function capHTML(r, s, bp) {
-    const cap = parseToman(state.capText) * 10;
-    if (!cap || state.running) return '';
-    if (bp <= cap) return note('ok', `همین الان زیر ${toman(cap)} هستی؛ لازم نیست جابجا شی.`);
-    const list = r.origins.concat(r.dests, r.combo ? [r.combo] : []).filter((c) => !c.dismissed && C.priceOf(c, s) <= cap);
-    if (!list.length) {
-      const near = C.nearestToCap(r, s);
-      return note('w', `تا ${fa(r.budget)} متر هیچ نقطه‌ای زیر ${toman(cap)} نبود${near ? `؛ ارزون‌ترین ${toman(C.priceOf(near, s))} با ${fa(near.walk)} متر پیاده` : ''}.`);
-    }
-    const best = list.sort((a, b) => a.walk - b.walk || C.priceOf(a, s) - C.priceOf(b, s))[0];
-    return note('ok', `کمترین پیاده‌روی برای زیر ${toman(cap)}: <b>${fa(best.walk)} متر</b> (${toman(C.priceOf(best, s))}). <button class="lnk" data-a="pick" data-k="${esc(best.id)}">نشونم بده</button>`);
   }
 
   /* ---------------- first run ---------------- */
   // Full-screen navy, like the app's banners: one idea per screen, a big headline with one lime word.
   const NOTICE = [
-    [ICON.info, 'یه‌قدم برنامهٔ رسمی اسنپ نیست و هیچ ربطی به اسنپ نداره.'],
-    [ICON.shield, 'با حساب خودت و روی دستگاه خودت فقط از اسنپ قیمت می‌پرسه. هیچ‌وقت سفر درخواست یا لغو نمی‌کنه و اطلاعاتت رو جای دیگه‌ای نمی‌فرسته.'],
-    [ICON.check, 'قیمت نهایی همونیه که خود اسنپ موقع درخواست سفر نشون می‌ده.'],
-    [ICON.alert, 'بعیده، ولی ممکنه اسنپ استعلام خودکار رو خلاف قوانینش بدونه و حسابت رو محدود کنه. استفاده با مسئولیت خودته.'],
+    [ICON.info, `یه‌قدم برنامه رسمی ${NAME} نیست و هیچ ربطی به ${NAME} نداره.`],
+    [ICON.shield, `با حساب خودت و روی دستگاه خودت فقط از ${NAME} قیمت می‌پرسه. هیچ‌وقت سفر درخواست یا لغو نمی‌کنه و اطلاعاتت رو جای دیگه‌ای نمی‌فرسته.`],
+    [ICON.check, `قیمت نهایی همونیه که خود ${NAME} موقع درخواست سفر نشون می‌ده.`],
+    [ICON.alert, `بعیده، ولی ممکنه ${NAME} استعلام خودکار رو خلاف قوانینش بدونه و حسابت رو محدود کنه. استفاده با مسئولیت خودته.`],
   ];
   const introArt = () => `<rect width="320" height="190" fill="#1d2240"/><path d="M0 92H320" stroke="#262c4d" stroke-width="18"/><path d="M110 0V190M228 0V190" stroke="#262c4d" stroke-width="10"/>
     <path d="M78 92H194" stroke="#fff" stroke-opacity=".6" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="0.5 8"/>
@@ -1082,11 +1225,11 @@
     <g transform="translate(160 162)"><rect x="-128" y="-17" width="256" height="34" rx="17" fill="#15192e" stroke="#2f3658"/><text y="5" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle" direction="rtl" unicode-bidi="embed" font-family="${FONT}">${toman(130000)} ارزون‌تر، ${fa(40)} متر پیاده</text></g>`;
   function introHTML() {
     const notice = state.intro === 1;
-    const dots = state.review ? '' : `<span class="dots" aria-label="صفحهٔ ${fa(state.intro + 1)} از ${fa(2)}"><i class="${notice ? '' : 'on'}"></i><i class="${notice ? 'on' : ''}"></i></span>`;
+    const dots = state.review ? '' : `<span class="dots" aria-label="صفحه ${fa(state.intro + 1)} از ${fa(2)}"><i class="${notice ? '' : 'on'}"></i><i class="${notice ? 'on' : ''}"></i></span>`;
     const body = notice
       ? `<h1 id="it">قبل از شروع،<br><em>اینو بدون</em></h1><ul class="il">${NOTICE.map(([ic, t]) => `<li><i>${ic}</i><span>${t}</span></li>`).join('')}</ul>`
       : `<h1 id="it">یه قدم راه برو،<br><em>ارزون‌تر</em> سوار شو</h1>
-        <p>یه‌قدم چند نقطهٔ نزدیکت رو از خود اسنپ قیمت می‌گیره و ارزون‌ترها رو نشونت می‌ده: چقدر ارزون‌تر و چند متر پیاده. تصمیم با خودته.</p>
+        <p>یه‌قدم چند نقطه نزدیکت رو از خود ${NAME} قیمت می‌گیره و ارزون‌ترها رو نشونت می‌ده: چقدر ارزون‌تر و چند متر پیاده. تصمیم با خودته.</p>
         <div class="iart"><svg viewBox="0 0 320 190" direction="ltr" aria-hidden="true">${introArt()}</svg></div>`;
     const acts = !notice ? `<button class="btn lime" id="inext" data-a="introNext">بعدی${ICON.next}</button>`
       : state.review ? `<button class="btn lime" id="inext" data-a="reviewClose">بستن</button>`
@@ -1114,23 +1257,25 @@
   const SNAPPIN = (x, y) => `<path d="M${x} ${y}c-9-11-14-18-14-25a14 14 0 0 1 28 0c0 7-5 14-14 25z" fill="#15192e"/><circle cx="${x}" cy="${y - 25}" r="5" fill="#fff"/>`;
   const GUIDE = [
     { t: 'یه قدم اون‌ورتر، ارزون‌تر',
-      d: 'قیمت اسنپ برای دو نقطهٔ نزدیک به هم گاهی چند هزار تومان فرق داره. یه‌قدم نقطه‌های اطراف مبدا و مقصدت رو قیمت می‌گیره و ارزون‌ترها رو نشونت می‌ده.',
+      d: `قیمت ${NAME} برای دو نقطه نزدیک به هم گاهی چند هزار تومان فرق داره. یه‌قدم نقطه‌های اطراف مبدا و مقصدت رو قیمت می‌گیره و ارزون‌ترها رو نشونت می‌ده.`,
       art: () => `${MAPBG}<path d="M72 80H172" stroke="#15192e" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="0.5 8"/><circle cx="58" cy="80" r="11" fill="#fff" stroke="#15192e" stroke-width="3.5"/><circle cx="188" cy="80" r="13" fill="#c5f04a" stroke="#15192e" stroke-width="2.5"/>
         <g transform="translate(58 42)"><rect x="-38" y="-16" width="76" height="30" rx="10" fill="#fff" stroke="#d9dce4"/>${T(0, 5, fa(85000), 13, 700, '#636982')}<path d="M-24 0H24" stroke="#636982" stroke-width="1.5"/></g>
         <g transform="translate(188 40)"><rect x="-44" y="-17" width="88" height="32" rx="11" fill="#15192e"/>${T(0, 5, fa(72000), 14, 800, '#c5f04a')}</g>
         <g transform="translate(122 106)"><rect x="-30" y="-13" width="60" height="22" rx="11" fill="#fff"/>${T(0, 3, fa(40) + ' متر', 11, 700, '#3a4058')}</g>` },
-    { t: 'اول مسیرت رو توی اسنپ بزن',
-      d: 'مبدا و مقصد رو مثل همیشه انتخاب کن. وقتی قیمت‌ها اومد، دکمهٔ «ارزون‌ترش کن» بالای قیمت‌ها پیدا می‌شه؛ روش بزن.',
+    { t: `اول مسیرت رو توی ${NAME} بزن`,
+      d: 'مبدا و مقصد رو مثل همیشه انتخاب کن. وقتی قیمت‌ها اومد، دکمه «ارزون‌ترش کن» بالای قیمت‌ها پیدا می‌شه؛ روش بزن.',
       art: () => `${MAPBG}<path d="M276 104V80H220V30" fill="none" stroke="#4f6bed" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="276" cy="104" r="8" fill="#15192e"/><circle cx="276" cy="104" r="3.5" fill="#fff"/>${SNAPPIN(220, 32)}
         <rect x="0" y="126" width="320" height="60" rx="18" fill="#fff"/><rect x="146" y="138" width="158" height="10" rx="5" fill="#e7e9ef"/><rect x="16" y="138" width="70" height="10" rx="5" fill="#e7e9ef"/><rect x="186" y="156" width="118" height="8" rx="4" fill="#f2f3f7"/>
         <g transform="translate(14 88)"><rect width="134" height="30" rx="15" fill="#15192e"/><rect x="4" y="4" width="22" height="22" rx="6" fill="#2a3050"/><circle cx="11.3" cy="18.5" r="2.4" fill="none" stroke="#fff" stroke-width="1.2"/><circle cx="18.6" cy="12" r="4.2" fill="#c5f04a"/>${T(80, 20, 'ارزون‌ترش کن', 12, 800, '#fff')}</g>
         <circle class="pulse" cx="110" cy="103" r="16" fill="none" stroke="#c5f04a" stroke-width="3"/>` },
     { t: 'بگو تا کجا پیاده میای',
-      d: '۱۰۰، ۲۰۰ یا ۳۰۰ متر. اگه سقف قیمت داری بنویسش تا بگه با کمترین پیاده‌روی کجا زیرش می‌شه. بعد «پیدا کن»؛ حدود ۱۰ ثانیه طول می‌کشه.',
-      art: () => `<rect width="320" height="170" fill="#f2f3f7"/><rect x="20" y="20" width="280" height="40" rx="13" fill="#e6e8ee"/><rect x="116" y="23" width="88" height="34" rx="10" fill="#15192e"/>
-        ${T(254, 45, fa(100) + ' متر', 12.5, 700, '#3a4058')}${T(160, 45, fa(200) + ' متر', 12.5, 800, '#fff')}${T(66, 45, fa(300) + ' متر', 12.5, 700, '#3a4058')}
-        <rect x="20" y="72" width="280" height="38" rx="12" fill="#fff" stroke="#e3e5ec" stroke-width="1.5"/>${T(286, 96, 'سقف قیمت، مثلاً ' + fa(160), 12, 500, '#636982', 'end')}${T(34, 96, 'هزار تومان', 11.5, 500, '#636982', 'start')}
-        <rect x="20" y="122" width="280" height="38" rx="13" fill="#15192e"/>${T(168, 146, 'پیدا کن', 13.5, 800, '#fff')}<path d="M138 141h-12m5-5-5 5 5 5" fill="none" stroke="#c5f04a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` },
+      d: 'برای مبدا و مقصد جدا بگو: ۱۰۰، ۲۰۰ یا ۳۰۰ متر. «همین‌جا» یعنی اون سر سر جاش بمونه. بعد «پیدا کن»؛ حدود ۱۰ ثانیه طول می‌کشه.',
+      art: () => {
+        const row = (y, label, on) => `<text x="300" y="${y - 6}" font-size="11" font-weight="700" fill="#636982" text-anchor="end" font-family="${FONT}">${label}</text><rect x="20" y="${y}" width="280" height="34" rx="12" fill="#e6e8ee"/>`
+          + [265, 195, 125, 55].map((cx, i) => (i === on ? `<rect x="${cx - 33}" y="${y + 3}" width="66" height="28" rx="9" fill="#15192e"/>` : '') + T(cx, y + 22, i ? fa([0, 100, 200, 300][i]) : 'همین‌جا', i ? 12.5 : 11.5, i === on ? 800 : 700, i === on ? '#fff' : '#3a4058')).join('');
+        return `<rect width="320" height="170" fill="#f2f3f7"/>${row(26, 'مبدا', 1)}${row(82, 'مقصد', 3)}
+          <rect x="20" y="130" width="280" height="32" rx="12" fill="#15192e"/>${T(168, 151, 'پیدا کن', 13.5, 800, '#fff')}<path d="M138 146h-12m5-5-5 5 5 5" fill="none" stroke="#c5f04a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+      } },
     { t: 'پیشنهادها رو مقایسه کن',
       d: 'هر کارت می‌گه چقدر ارزون‌تر، چند متر پیاده و کجا. همون شماره روی نقشه هم هست و خط‌چین، راه پیاده‌روی رو نشون می‌ده.',
       art: () => `${MAPBG}<circle cx="60" cy="80" r="6" fill="#94a3b8" stroke="#fff" stroke-width="2"/><circle cx="262" cy="80" r="6" fill="#dc2626" stroke="#fff" stroke-width="2"/><circle cx="108" cy="122" r="6" fill="#dc2626" stroke="#fff" stroke-width="2"/><circle cx="220" cy="128" r="6" fill="#94a3b8" stroke="#fff" stroke-width="2"/>
@@ -1138,15 +1283,15 @@
         <circle cx="148" cy="80" r="13" fill="#c5f04a" stroke="#15192e" stroke-width="2.5"/>${T(148, 85, fa(1), 13, 800, '#15192e')}<circle cx="246" cy="36" r="12" fill="#fff" stroke="#15192e" stroke-width="2.5"/>${T(246, 41, fa(2), 12.5, 800, '#15192e')}
         <rect x="10" y="140" width="300" height="24" rx="12" fill="#fff"/><circle cx="296" cy="152" r="5" fill="#65a30d"/>${T(287, 156, 'ارزون‌تر', 11, 700, '#3a4058', 'end')}<circle cx="196" cy="152" r="5" fill="#dc2626"/>${T(187, 156, 'گرون‌تر', 11, 700, '#3a4058', 'end')}<circle cx="100" cy="152" r="5" fill="#94a3b8"/>${T(91, 156, 'فرقی نداره', 11, 700, '#3a4058', 'end')}` },
     { t: 'اعمال کن، بعد پیاده برو',
-      d: 'با «اعمال در اسنپ» پین خودش می‌ره سر نقطهٔ جدید؛ تو فقط روی پین بزن تا اسنپ تأییدش کنه. پیشنهادی رو نمی‌خوای؟ «نمی‌رم» رو بزن.',
+      d: TAPSI ? 'با «اعمال» همون صفحه با نقطه جدید باز می‌شه و قیمت تازه رو همون‌جا می‌بینی؛ تأیید لازم نیست. پیشنهادی رو نمی‌خوای؟ «نمی‌رم» رو بزن.' : 'با «اعمال» پین خودش می‌ره سر نقطه جدید؛ تو فقط روی پین بزن تا اسنپ تأییدش کنه. پیشنهادی رو نمی‌خوای؟ «نمی‌رم» رو بزن.',
       art: () => `${MAPBG}<circle class="pulse" cx="160" cy="80" r="30" fill="none" stroke="#c5f04a" stroke-width="3.5"/>${SNAPPIN(160, 80)}
-        <g transform="translate(16 12)"><rect width="288" height="32" rx="11" fill="#15192e"/>${T(274, 21, 'روی پین اسنپ بزن تا تأیید شه', 12, 700, '#fff', 'end')}<circle cx="18" cy="16" r="5" fill="#c5f04a"/></g>
+        <g transform="translate(16 12)"><rect width="288" height="32" rx="11" fill="#15192e"/>${T(274, 21, TAPSI ? 'صفحه با نقطه جدید باز می‌شه' : 'روی پین اسنپ بزن تا تأیید شه', 12, 700, '#fff', 'end')}<circle cx="18" cy="16" r="5" fill="#c5f04a"/></g>
         <g transform="translate(174 88) scale(1.7)" fill="none" stroke="#15192e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></g>` },
     { t: 'خیالت راحت',
       list: () => [
-        [ICON.shield, 'فقط از خود اسنپ قیمت می‌پرسه و هیچ‌وقت سفر درخواست نمی‌ده. اطلاعات حسابت به هیچ سرور دیگه‌ای نمی‌ره.'],
+        [ICON.shield, `فقط از خود ${NAME} قیمت می‌پرسه و هیچ‌وقت سفر درخواست نمی‌ده. اطلاعات حسابت به هیچ سرور دیگه‌ای نمی‌ره.`],
         [ICON.clock, 'برای امنیت حسابت، چند جستجو در هر ۱۰ دقیقه بیشتر انجام نمی‌ده.'],
-        [ICON.hand, `قیمت یه نقطهٔ دلخواه رو می‌خوای؟ روی نقشه ${TOUCH ? 'انگشتت رو نگه دار' : 'کلیک راست کن'}.`],
+        [ICON.hand, `قیمت یه نقطه دلخواه رو می‌خوای؟ روی نقشه ${TOUCH ? 'انگشتت رو نگه دار' : 'کلیک راست کن'}.`],
       ],
       art: () => `<rect width="320" height="170" fill="#f2f3f7"/><circle cx="160" cy="85" r="62" fill="#e6e8ee"/>
         <g transform="translate(124 46) scale(3)"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" fill="#15192e"/><path d="m9 12 2 2 4-4" fill="none" stroke="#c5f04a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
@@ -1156,7 +1301,7 @@
   function guideHTML() {
     const i = state.guide, g = GUIDE[i], last = i === GUIDE.length - 1;
     const body = g.list
-      ? `<ul class="gl">${g.list().map(([ic, s]) => `<li>${ic}<span>${s}</span></li>`).join('')}</ul><div class="fine">${ICON.info}<span>برنامهٔ غیررسمی؛ ربطی به اسنپ نداره. <button class="lnk" data-a="terms">شرایط استفاده</button></span></div>`
+      ? `<ul class="gl">${g.list().map(([ic, s]) => `<li>${ic}<span>${s}</span></li>`).join('')}</ul><div class="fine">${ICON.info}<span>برنامه غیررسمی؛ ربطی به ${NAME} نداره. <button class="lnk" data-a="terms">شرایط استفاده</button></span></div>`
       : `<p>${g.d}</p>`;
     return `<div class="gd" data-a="guideOut"><div class="gs" role="dialog" aria-modal="true" aria-labelledby="gt">
       <div class="gtop">${LOGO}<span class="name">راهنمای یه‌قدم</span><span class="sp"></span><button class="ic" data-a="guideSkip" aria-label="بستن راهنما" title="بستن">${ICON.close}</button></div>
@@ -1190,11 +1335,11 @@
     h += '<div class="bd">';
     let dock = '';
     if (state.compat) h += note('e', ERR.changed);
-    if (!authHeader()) h += note('w', 'اول وارد حساب اسنپت شو.');
-    else if (!state.route) h += note('i', 'مبدا و مقصد رو توی اسنپ انتخاب و تأیید کن تا قیمت بیاد؛ بعد همین‌جا ارزون‌ترش می‌کنیم.');
+    if (!signedIn()) h += note('w', `اول توی ${NAME} وارد حسابت شو.`);
+    else if (!state.route) h += note('i', `مبدا و مقصد رو توی ${NAME} انتخاب و تأیید کن تا قیمت بیاد؛ بعد همین‌جا ارزون‌ترش می‌کنیم.`);
     if (state.running) {
       const done = r ? r.requests : 0, total = r && r.planned ? r.planned : 23;
-      h += `<div class="run" role="status" aria-live="polite"><div><b>بررسی ${fa(done)} از ${fa(total)} نقطه</b><small>تا ${fa(settings.budget)} متر پیاده، با حساب خودت</small></div></div>`;
+      h += `<div class="run" role="status" aria-live="polite"><div><b>بررسی ${fa(done)} از ${fa(total)} نقطه</b><small>${reach(settings.budgets)} پیاده، با حساب خودت</small></div></div>`;
       if (r && r.base) h += resultHTML();
       dock = `<button class="btn ghost" data-a="stop">توقف</button>`;
     } else if (state.error) {
@@ -1229,17 +1374,17 @@
     }
     const canApply = !p.loading && !p.error && p.prices;
     return `<div class="ab" role="status"><div class="top">${ICON.pin}<span>قیمت این نقطه به‌عنوان ${lbl}</span></div>${body}
-      <div class="acts">${canApply ? `<button class="go" data-a="applyProbe">اعمال در اسنپ${ICON.next}</button>` : ''}<button class="nb" data-a="closeProbe">بستن</button></div></div>`;
+      <div class="acts">${canApply ? `<button class="go" data-a="applyProbe">اعمال${ICON.next}</button>` : ''}<button class="nb" data-a="closeProbe">بستن</button></div></div>`;
   }
 
   function applyHTML() {
     const a = state.apply;
     if (!a) return '';
     const s = a.steps[a.i], lbl = LABEL[s.kind];
-    const steps = a.steps.length > 1 ? `<span class="steps" aria-label="مرحلهٔ ${fa(a.i + 1)} از ${fa(a.steps.length)}">${a.steps.map((_, j) => `<i class="${j === a.i ? 'on' : ''}"></i>`).join('')}</span>` : '';
+    const steps = a.steps.length > 1 ? `<span class="steps" aria-label="مرحله ${fa(a.i + 1)} از ${fa(a.steps.length)}">${a.steps.map((_, j) => `<i class="${j === a.i ? 'on' : ''}"></i>`).join('')}</span>` : '';
     let msg = '', acts = '';
-    if (a.phase === 'fly') msg = `<div class="msg"><span class="spin"></span>دارم پین ${lbl} رو می‌برم سر نقطهٔ ارزون‌تر…</div>`;
-    else if (a.phase === 'confirm') msg = `<div class="msg"><span>روی <b>پین اسنپ</b> بزن تا ${lbl} جدید تأیید شه.</span></div><div class="sub">همون پینی که وسط دایرهٔ سبز چشمک می‌زنه.</div>`;
+    if (a.phase === 'fly') msg = `<div class="msg"><span class="spin"></span>دارم پین ${lbl} رو می‌برم سر نقطه ارزون‌تر…</div>`;
+    else if (a.phase === 'confirm') msg = `<div class="msg"><span>روی <b>پین اسنپ</b> بزن تا ${lbl} جدید تأیید شه.</span></div><div class="sub">همون پینی که وسط دایره سبز چشمک می‌زنه.</div>`;
     else {
       msg = `<div class="msg">برچسب «${lbl}» روی نقشه پیدا نشد.</div><div class="sub">خودت روی «${lbl}» روی نقشه بزن، بعد «ادامه» رو بزن.</div>`;
       acts = `<button class="go" data-a="manualGo">ادامه${ICON.next}</button>`;
@@ -1288,7 +1433,11 @@
     else if (a === 'guideSkip' || a === 'guideOut') closeGuide();
     else if (a === 'run') startRun();
     else if (a === 'setup') { state.setup = true; emit(); }
-    else if (a === 'budget') { settings.budget = +k; saveSettings(); emit(); }
+    else if (a === 'budget') {
+      const [end, v] = k.split(':'), other = end === 'origin' ? 'dest' : 'origin';
+      if (!+v && !settings.budgets[other]) { notify('یکی از مبدا یا مقصد رو باید بگردی.'); return; }
+      settings.budgets[end] = +v; saveSettings(); emit();
+    }
     else if (a === 'cat') {
       if (cat() === +k) return;
       settings.category = +k; saveSettings();
@@ -1315,10 +1464,6 @@
     else if (a === 'manualGo') continueManual();
     else if (a === 'cancelApply') cancelApply();
   }
-  function onInput(e) {
-    if (e.target.id === 'cap') state.capText = e.target.value; // no re-render while typing
-  }
-
   // Android back button: close this UI first.
   window.__yeghadamBack = function () {
     if (state.review) { state.intro = null; state.review = false; emit(); return true; }
@@ -1338,7 +1483,7 @@
   let awayTicks = 0;
   function checkCompat() {
     const last = recent[recent.length - 1];
-    const markers = document.querySelectorAll('.mapboxgl-marker').length;
+    const markers = document.querySelectorAll('.mapboxgl-marker, .maplibregl-marker').length;
     const stuck = !!last && !state.route && state.map && markers >= 2 && Date.now() - last.t > 20000;
     if (stuck !== !!state.compat) { state.compat = stuck; emit(); }
   }

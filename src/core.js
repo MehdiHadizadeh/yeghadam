@@ -154,7 +154,7 @@
 
   /* ---------------- walking graph ---------------- */
   // Pedestrians cannot walk along these; cars cannot stop on anything outside STOP.
-  const NO_WALK = new Set(['motorway', 'trunk', 'construction', 'rail', 'transit', 'ferry', 'raceway', 'busway']);
+  const NO_WALK = new Set(['motorway', 'trunk', 'construction', 'rail', 'transit', 'ferry', 'raceway', 'busway', 'subway']);
   const STOP = new Set(['primary', 'secondary', 'tertiary', 'minor', 'service']);
   // Extra walking cost (m) for crossing a divided road of this class at an arbitrary point.
   const CROSS_PENALTY = { primary: 20, secondary: 10, tertiary: 5 };
@@ -484,6 +484,85 @@
     return { prices, names, ttl: json && json.data && json.data.ttl, categories };
   }
 
+  /* ---------------- Tapsi price API ---------------- */
+  // POST /api/v3.1/ride/preview (cookie session). Prices are toman; everything else here works in rial, so they are x10.
+  // Category ids match the Snapp ones: 1 = car tab, 2 = motorbike tab. Delivery is never priced.
+  const TAPSI_TABS = { 1: 'CAR', 2: 'MOTO_TAXI' };
+  const TAPSI_SERVICES = {
+    STANDARD: [1, 'عادی'], WAIT_AND_SAVE: [2, 'عجله ندارم'], PLUS: [3, 'تپسی پلاس'], TAPSI_MOTO: [11, 'تپسی‌موتو'],
+  };
+  function tapsiServiceId(key) {
+    if (TAPSI_SERVICES[key]) return TAPSI_SERVICES[key][0];
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 800;
+    return 100 + h; // stable id for a service this build does not know
+  }
+  function tapsiPriceBody(points, now) {
+    const t = now == null ? Date.now() : now;
+    const ll = (p) => ({ latitude: +p.lat, longitude: +p.lng });
+    return {
+      origin: ll(points[0]), destinations: points.slice(1).map(ll), rider: null, needTrunk: false, silentMode: false,
+      waitingTime: 0, gateway: 'CAB', initiatedVia: 'WEB',
+      metadata: { flowType: 'ORIGIN_FIRST', previewType: 'ORIGIN_FIRST', ttpEvents: { destinationSelectedAt: t - 60000, cabSelectedAt: t - 50000, originSelectedAt: t - 1000 } },
+    };
+  }
+  function parseTapsiPrices(json, category) {
+    const tabs = (json && json.data && Array.isArray(json.data.tabs) && json.data.tabs) || [];
+    const prices = {}, names = {};
+    for (const tab of tabs) {
+      if (tab.key !== TAPSI_TABS[category || 1]) continue;
+      for (const it of tab.items || []) {
+        const s = it && it.service;
+        if (!s || s.isAvailable === false || !Array.isArray(s.prices)) continue;
+        const step = s.prices[s.defaultPriceStep || 0] || s.prices[0];
+        const id = tapsiServiceId(s.key);
+        names[id] = TAPSI_SERVICES[s.key] ? TAPSI_SERVICES[s.key][1] : 'سرویس دیگر';
+        if (step && step.passengerShare > 0) prices[id] = step.passengerShare * 10;
+      }
+    }
+    const categories = [];
+    for (const id of [1, 2]) {
+      const tab = tabs.find((t) => t.key === TAPSI_TABS[id]);
+      if (tab) categories.push({ id, name: tab.title || (id === 1 ? 'ماشین' : 'موتور') });
+    }
+    return { prices, names, ttl: json && json.data && json.data.ttl, categories };
+  }
+
+  /* ---------------- settings and Tapsi route helpers ---------------- */
+  // Walking distance per end in meters; 0 leaves that end alone. Older versions saved one number for both ends.
+  function normalizeBudgets(settings, allowed) {
+    const old = allowed.includes(settings.budget) ? settings.budget : 200;
+    const b = settings.budgets && typeof settings.budgets === 'object' ? settings.budgets : { origin: old, dest: old };
+    for (const k of ['origin', 'dest']) if (b[k] !== 0 && !allowed.includes(b[k])) b[k] = old;
+    if (!b.origin && !b.dest) b.origin = b.dest = 200;
+    return b;
+  }
+  const parseJSON = (s) => { try { return JSON.parse(s); } catch (e) { return null; } };
+  // Tapsi keeps the route in the page URL: ?origin=[lng,lat]&destinations=[[lng,lat],...]
+  function tapsiRoutePoints(search) {
+    const q = new URLSearchParams(search);
+    const o = parseJSON(q.get('origin')), d = parseJSON(q.get('destinations'));
+    if (!Array.isArray(o) || !Array.isArray(d) || !d.length || !d.every(Array.isArray)) return null;
+    const pts = [o].concat(d).map((p) => ({ lat: +p[1], lng: +p[0] }));
+    return pts.every((p) => isFinite(p.lat) && isFinite(p.lng)) ? pts : null;
+  }
+  // The same query with the route replaced by `points`; every other parameter is kept.
+  function tapsiRouteSearch(search, points) {
+    const q = new URLSearchParams(search);
+    q.set('origin', JSON.stringify([points[0].lng, points[0].lat]));
+    q.set('destinations', JSON.stringify(points.slice(1).map((p) => [p.lng, p.lat])));
+    return q.toString();
+  }
+  // "up to 200 m", "origin up to 100 m, destination up to 300 m" or "destination only, up to 200 m", in Persian
+  function reachText(b) {
+    const fa = (n) => Number(n).toLocaleString('fa-IR');
+    const o = b.origin, d = b.dest;
+    if (o === d) return `تا ${fa(o)} متر`;
+    if (!o) return `فقط مقصد، تا ${fa(d)} متر`;
+    if (!d) return `فقط مبدا، تا ${fa(o)} متر`;
+    return `مبدا تا ${fa(o)} و مقصد تا ${fa(d)} متر`;
+  }
+
   /* ---------------- search ---------------- */
   class SearchError extends Error { constructor(code) { super(code); this.code = code; } }
   const priceOf = (c, sid) => (c && c.prices && c.prices[sid]) || Infinity;
@@ -491,7 +570,8 @@
   /*
    * opts:
    *   route: { points: [{lat,lng}, ...], category }
-   *   budget: walking meters (same for origin and destination)
+   *   budgets: { origin, dest } walking meters per end; 0 leaves that end alone (all quotes go to the other one)
+   *   budget: walking meters for both ends, when `budgets` is not given
    *   quote(points) → Promise<{ prices: {serviceId: rial}, names }>   (only network call besides getFeatures)
    *   getFeatures(center, R) → Promise<features[]>   (may resolve [])
    *   serviceId (optional), maxRequests (25), perEnd (8), delay (250 ms)
@@ -499,20 +579,27 @@
    */
   async function search(opts) {
     const route = opts.route, pts = route.points, last = pts.length - 1;
-    const budget = opts.budget, maxReq = opts.maxRequests || 25, perEnd = opts.perEnd || 8;
+    const B = opts.budgets ? { origin: +opts.budgets.origin || 0, dest: +opts.budgets.dest || 0 } : { origin: opts.budget, dest: opts.budget };
+    const budget = Math.max(B.origin, B.dest), maxReq = opts.maxRequests || 25;
+    // one end only: its candidates can use the quotes the other end would have taken
+    const perEnd = opts.perEnd || (B.origin && B.dest ? 8 : 12);
     const delay = opts.delay == null ? 250 : opts.delay;
     const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     const progress = opts.onProgress || (() => {});
     const cancelled = opts.isCancelled || (() => false);
 
     const res = {
-      at: Date.now(), budget, category: route.category || 1, routePoints: pts,
+      at: Date.now(), budget, budgets: B, category: route.category || 1, routePoints: pts,
       O: pts[0], D: pts[last], base: null, baseEnd: null, origins: [], dests: [], combo: null,
       names: {}, sid: opts.serviceId, requests: 0, planned: 0, drift: 0, approx: { origin: false, dest: false },
     };
 
+    if (!B.origin && !B.dest) { res.error = 'nothing'; res.done = true; return res; }
+
     // road graphs first, so the plan (request count) is known before quoting
     async function plan(center, kind) {
+      const budget = B[kind];
+      if (!budget) return { g: null, w: null, cands: [], budget: 0 };
       let feats = [];
       try { feats = (await opts.getFeatures(center, budget + 80)) || []; } catch (e) { feats = []; }
       const g = feats.length ? buildGraph(feats, center, budget) : null;
@@ -520,9 +607,9 @@
       if (!g || w.start < 0) {
         res.approx[kind] = true;
         const step = Math.max(40, Math.round(budget / 3));
-        return { g: null, w: null, cands: gridCandidates(center, budget, step, kind).slice(0, perEnd) };
+        return { g: null, w: null, budget, cands: gridCandidates(center, budget, step, kind).slice(0, perEnd) };
       }
-      return { g, w, cands: pickCandidates(g, w, budget, perEnd).map((id) => toCandidate(g, w, id, kind)) };
+      return { g, w, budget, cands: pickCandidates(g, w, budget, perEnd).map((id) => toCandidate(g, w, id, kind)) };
     }
     const po = await plan(res.O, 'origin');
     const pd = await plan(res.D, 'dest');
@@ -556,7 +643,12 @@
     const saving = (c) => priceOf(res.base, sid()) - priceOf(c, sid());
 
     async function quoteCand(c, kind, list) {
-      c.prices = await ask(withPoint(c, kind));
+      try {
+        c.prices = await ask(withPoint(c, kind));
+      } catch (e) {
+        if (e.code === 'unavailable') return; // this one point is refused; the base price already worked
+        throw e;
+      }
       list.push(c);
       progress(res);
     }
@@ -582,7 +674,7 @@
         }
         if (!pick) return;
         tried.add(pick.c);
-        const ids = refineAround(pick.p.g, pick.p.w, pick.c.node, budget, pick.list.filter((c) => c.node != null).map((c) => c.node), Math.min(3, left()));
+        const ids = refineAround(pick.p.g, pick.p.w, pick.c.node, pick.p.budget, pick.list.filter((c) => c.node != null).map((c) => c.node), Math.min(3, left()));
         for (const id of ids) {
           if (left() <= 0) break;
           const c = toCandidate(pick.p.g, pick.p.w, id, pick.kind);
@@ -617,7 +709,7 @@
       await explore(pd, 'dest', res.dests);
       await refine();
       // the base price was locked before this search started: also price the same street right now
-      if (res.base.ttl != null && res.freshTtl - res.base.ttl > 45 && res.requests < maxReq - 1) {
+      if (B.origin && res.base.ttl != null && res.freshTtl - res.base.ttl > 45 && res.requests < maxReq - 1) {
         const t = twinOf(po);
         t.prices = await ask(withPoint(t, 'origin'));
         t.twin = true;
@@ -625,7 +717,7 @@
         res.origins.push(t);
         progress(res);
       }
-      if (res.base.ttl != null && res.freshTtl - res.base.ttl > 45) res.baseLock = { left: res.base.ttl, at: res.at };
+      if (B.origin && res.base.ttl != null && res.freshTtl - res.base.ttl > 45) res.baseLock = { left: res.base.ttl, at: res.at };
       const bo = bestOf(res.origins, sid()), bd = bestOf(res.dests, sid());
       const bp = priceOf(res.base, sid());
       if (bo && bd && bp - priceOf(bo, sid()) >= MIN_SAVING && bp - priceOf(bd, sid()) >= MIN_SAVING) {
@@ -681,18 +773,14 @@
     }));
   }
 
-  // Closest quoted point when nothing is under the cap.
-  function nearestToCap(res, sid) {
-    const list = res.origins.concat(res.dests).filter((c) => isFinite(priceOf(c, sid)));
-    return list.sort((a, b) => priceOf(a, sid) - priceOf(b, sid) || a.walk - b.walk)[0] || null;
-  }
-
   // Normalize Persian label text: drop kashida (U+0640) and ZWNJ, map hamza alef forms to plain alef, Arabic yeh and kaf to Persian.
   const normalizeFa = (s) => String(s || '').replace(/[ـ‌]/g, '').replace(/[أإآ]/g, 'ا').replace(/ي/g, 'ی').replace(/ك/g, 'ک');
 
   return {
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
-    pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, search, cards, priceOf,
-    bestOf, nearestToCap, normalizeFa, SearchError,
+    pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
+    normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText,
+    search, cards, priceOf,
+    bestOf, normalizeFa, SearchError,
   };
 });
