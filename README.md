@@ -2,6 +2,14 @@
   <img src="docs/images/banner.png" alt="یه‌قدم: یه قدم اون‌ورتر، ارزون‌تر" width="760">
 </p>
 
+<p align="center">
+  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MehdiHadizadeh/yeghadam"></a>
+  <a href="../../actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MehdiHadizadeh/yeghadam/ci.yml?branch=main&label=CI"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/MehdiHadizadeh/yeghadam"></a>
+</p>
+
+<p align="center"><sub><b>English:</b> Yeghadam finds a cheaper pickup or drop-off point a few steps away in the Snapp and Tapsi web apps. It asks the service for prices of nearby points you can really walk to and shows a few short suggestions. Unofficial, no server, and it never requests a ride. Android app and browser extension; see <a href="#development">Development</a>.</sub></p>
+
 <div dir="rtl">
 
 # یه‌قدم
@@ -54,6 +62,23 @@
 4. در [app.snapp.taxi](https://app.snapp.taxi) یا [app.tapsi.cab](https://app.tapsi.cab) مبدا و مقصد را انتخاب کن و روی «ارزون‌ترش کن» بزن.
 
 **فایرفاکس ۱۲۸ به بعد:** در `about:debugging#/runtime/this-firefox` روی **Load Temporary Add-on** بزن و `manifest.json` داخل همان پوشه را انتخاب کن.
+
+## محدودیت‌ها
+
+- **غیررسمی است.** اسنپ و تپسی ممکن است API یا صفحه‌شان را عوض کنند و یه‌قدم تا آپدیت کار نکند. نسخه‌ی تازه را از [Releases](../../releases) بگیر.
+- **قیمت نهایی را خود سرویس می‌گوید.** قیمت‌ها در چند دقیقه عوض می‌شوند (در تپسی هر یک دقیقه). یه‌قدم وقتی قیمت جابه‌جا شود خبرت می‌کند، ولی تضمین صرفه نمی‌دهد.
+- **ریسک حساب.** بعید است، ولی ممکن است سرویس استعلام خودکار را خلاف قوانینش بدانند. برای همین تعداد جستجوها محدود است.
+- **سفر را خودت ثبت می‌کنی.** یه‌قدم هیچ‌وقت سفر درخواست نمی‌دهد.
+
+## سوال‌های پرتکرار
+
+**با «همین‌جا» چه می‌شود؟** آن سر (مبدا یا مقصد) جابه‌جا نمی‌شود و همه‌ی استعلام‌ها برای سر دیگر خرج می‌شود.
+
+**چرا بعضی وقت‌ها صرفه‌ای پیدا نمی‌شود؟** شب‌ها و مسیرهای خلوت قیمت نقاط اطراف تقریباً یکی است. ساعت‌های شلوغ و بلوارهای دوطرفه معمولاً نتیجه‌ی بهتری دارند.
+
+**سرویس را چطور عوض کنم؟** در اپ اندروید از صفحه‌ی اول دکمه‌ی برگشت را بزن. در مرورگر کافی است سایت دیگر را باز کنی.
+
+**باگ دیدم یا پیشنهاد دارم.** در [Issues](../../issues) بنویس و توکن و آدرس واقعی‌ات را حذف کن. مشکل امنیتی را طبق [SECURITY.md](SECURITY.md) خصوصی گزارش کن.
 
 ## حریم خصوصی و امنیت حساب
 
@@ -119,11 +144,15 @@ Load `dist/extension/` with **Load unpacked** to try local changes.
 
 On Snapp the route is taken from its own price requests, and only once their first and last points sit on the origin and destination markers, so previews made while dragging a pin are ignored. On Tapsi the route is read from the page URL, and applying a suggestion opens the same URL with the new point.
 
+### Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Security problems go through [SECURITY.md](SECURITY.md). Changes per release are in [CHANGELOG.md](CHANGELOG.md).
+
 ### Releasing
 
 The version lives in `package.json` only; the extension manifest and the Android version are derived from it.
 
-1. Bump `version` in `package.json` and commit.
+1. Bump `version` in `package.json`, add the release to `CHANGELOG.md` and commit.
 2. Tag and push: `git tag v2.1.0 && git push origin v2.1.0`.
 3. The [Release workflow](.github/workflows/release.yml) tests, builds and signs the APK, zips the extension and publishes both with checksums.
 
