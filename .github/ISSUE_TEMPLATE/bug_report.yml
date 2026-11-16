@@ -1,0 +1,42 @@
+name: Bug report
+description: Something does not work or shows a wrong price
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste tokens, cookies or your real addresses. Remove them from logs and screenshots first.
+        For anything about accounts or privacy, use [SECURITY.md](https://github.com/MehdiHadizadeh/yeghadam/blob/main/SECURITY.md) instead.
+  - type: dropdown
+    id: service
+    attributes:
+      label: Service
+      options: [Snapp, Tapsi, Both]
+    validations:
+      required: true
+  - type: dropdown
+    id: app
+    attributes:
+      label: Where do you use it
+      options: [Android app, Chrome or Edge extension, Firefox extension, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release number, for example 2.3.0
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw instead. A screenshot helps.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      description: For example Pixel 7, Android 14, or Chrome 130 on Windows

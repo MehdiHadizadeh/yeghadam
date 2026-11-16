@@ -1,0 +1,21 @@
+name: Suggestion
+description: An idea that would make Yeghadam more useful
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you want to do
+      description: Describe the situation, not the solution. For example "I only care about the drop-off point".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: Your idea, if you have one.
+  - type: dropdown
+    id: service
+    attributes:
+      label: Service
+      options: [Snapp, Tapsi, Both, Another service]
