@@ -16,10 +16,14 @@ Yeghadam has no server and collects no data.
 
 Nothing is sent anywhere else. Your token and session never leave your device.
 
+## The other service's price
+
+If you say yes, once, the page also gets the price of the same route from the other service. A page never calls the other service itself. It hands the route points (latitude and longitude only) to the page of the other service, in the other browser tab or the other tab of the Android app, which asks its own API with its own session and hands back one price. The extension's background script and the Android bridge only pass these messages along; they make no network request. If the other service is not open, nothing is loaded for this: it just says so. The route points do reach the other service, which is your own account there. Your answer is remembered in the page's local storage and can be changed in the panel.
+
 ## What it stores on your device
 
-In the page's local storage: your last walking-distance choice, your preferred service per category, and the times of recent searches (used only to keep the number of quotes low). The Android app also keeps which service you picked and the version of the notice you accepted in its own private preferences. Nothing is synced.
+In the page's local storage: your last walking-distance choice, your preferred service per category, whether you allowed the other service's price, and the times of recent searches (used only to keep the number of quotes low). The Android app also keeps, in its own private preferences, which service you picked, the version of the notice you accepted, and whether you have seen the intro and the guide and what you answered about the other service's price (one answer for both services). Its first-run screens are a local page inside the app and load nothing from the network. Nothing is synced.
 
 ## What it never does
 
-It never requests, confirms or cancels a ride. Applying a suggestion only moves the pin on Snapp's map (you confirm it yourself) or opens Tapsi's price page with the new point; you request the ride yourself.
+It never requests, confirms or cancels a ride. Applying a suggestion only moves the pin on Snapp's map and presses Snapp's own confirm button for the point, or opens Tapsi's price page with the new point. Opening the other service with your route does the same on that service. You request the ride yourself.
