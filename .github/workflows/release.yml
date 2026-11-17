@@ -60,6 +60,7 @@ jobs:
           mkdir -p out
           cp android/app/build/outputs/apk/release/app-release.apk "out/yeghadam-$VERSION.apk"
           (cd dist/extension && zip -r "../../out/yeghadam-extension-$VERSION.zip" .)
+          (cd dist/extension-firefox && zip -r "../../out/yeghadam-extension-firefox-$VERSION.zip" .)
           (cd out && sha256sum * > SHA256SUMS.txt)
 
       - uses: softprops/action-gh-release@v2
