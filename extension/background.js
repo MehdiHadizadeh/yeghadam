@@ -46,9 +46,11 @@ async function ask(sender, points) {
 const pending = new Map();
 const PENDING_MS = 2 * 60 * 1000;
 
+// Bring a tab forward. Firefox for Android has a single window and a limited windows API, so focusing the window is
+// best effort: the tab switch above is what matters.
 async function focusTab(tab) {
   await api.tabs.update(tab.id, { active: true });
-  await api.windows.update(tab.windowId, { focused: true });
+  try { await api.windows.update(tab.windowId, { focused: true }); } catch (e) { /* no windows API here */ }
 }
 
 // Open the other service with the route. Tapsi takes the route in its URL; Snapp's start page is driven by its script.
@@ -69,7 +71,7 @@ async function openOther(sender, points) {
     return;
   }
   const target = tab ? await api.tabs.update(tab.id, { url, active: true }) : await api.tabs.create({ url });
-  if (tab) await api.windows.update(tab.windowId, { focused: true });
+  if (tab) { try { await api.windows.update(tab.windowId, { focused: true }); } catch (e) { /* see focusTab */ } }
   if (toSnapp && target && target.id != null) pending.set(target.id, { points: pts, at: Date.now() });
 }
 

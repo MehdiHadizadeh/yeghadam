@@ -64,7 +64,7 @@
 3. **Load unpacked** را بزن و پوشه‌ی باز شده را انتخاب کن.
 4. در [app.snapp.taxi](https://app.snapp.taxi) یا [app.tapsi.cab](https://app.tapsi.cab) مبدا و مقصد را انتخاب کن و روی «ارزون‌ترش کن» بزن. بعد از هر بار نصب یا به‌روزرسانی افزونه، تب‌های باز اسنپ و تپسی را یک بار رفرش کن.
 
-**فایرفاکس ۱۲۸ به بعد:** در `about:debugging#/runtime/this-firefox` روی **Load Temporary Add-on** بزن و `manifest.json` داخل پوشه‌ی `dist/extension-firefox` را انتخاب کن (فایرفاکس پس‌زمینه‌ی سرویس‌ورکر ندارد، پس نسخه‌ی خودش را می‌خواهد).
+**فایرفاکس ۱۲۸ به بعد:** فایل `yeghadam-extension-firefox-x.y.z.zip` را از [Releases](../../releases) دانلود و از حالت فشرده خارج کن، بعد در `about:debugging#/runtime/this-firefox` روی **Load Temporary Add-on** بزن و `manifest.json` داخلش را انتخاب کن. فایرفاکس پس‌زمینه‌ی سرویس‌ورکر ندارد، پس نسخه‌ی خودش را می‌خواهد. این نسخه هنوز در فایرفاکس اجرا نشده و در addons.mozilla.org منتشر نشده است. فایرفاکس اندروید فقط افزونه‌ی همان فروشگاه را نصب می‌کند، پس فعلاً روی موبایل نصب‌شدنی نیست.
 
 ## محدودیت‌ها
 
