@@ -2,6 +2,14 @@
 
 Notable changes per release. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- The Android app has a two-tab switch between Snapp and Tapsi. Each service keeps its own page and history, so switching does not reload anything. The second service is only loaded the first time it is opened.
+
+### Changed
+- Back from the first page of a service closes the app instead of showing the service choice again.
+
 ## [2.3.0] - 2026-11-17
 
 ### Added
