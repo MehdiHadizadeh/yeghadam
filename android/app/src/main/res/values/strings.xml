@@ -3,8 +3,6 @@
     <string name="app_name">یه‌قدم</string>
     <string name="splash_tagline">یه قدم اون‌ورتر، ارزون‌تر</string>
     <string name="splash_unofficial">برنامه غیررسمی؛ ربطی به اسنپ و تپسی نداره</string>
-    <string name="choose_service">با اسنپ می‌ری یا تپسی؟</string>
-    <string name="choose_service_note">بعدا هم می‌تونی عوضش کنی، توی صفحه اول دکمه برگشت رو بزن.</string>
     <string name="service_snapp">اسنپ</string>
     <string name="service_tapsi">تپسی</string>
 </resources>

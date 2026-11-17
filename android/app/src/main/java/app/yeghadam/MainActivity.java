@@ -38,6 +38,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
@@ -54,6 +57,7 @@ public class MainActivity extends Activity {
     private static final String HOME_SNAPP = "https://app.snapp.taxi/";
     private static final String HOME_TAPSI = "https://app.tapsi.cab/";
     private static final int REQ_LOCATION = 41;
+    private static final int NOTICE_VERSION = 1; // keep equal to NOTICE_V in src/ui.js
     private static final int NAVY = 0xFF15192E;
     private static final int LIME = 0xFFC5F04A;
     // The splash stays at least this long, so it never flickers, and at most this long, if the page hangs.
@@ -65,7 +69,9 @@ public class MainActivity extends Activity {
     private final TextView[] tabs = new TextView[2];
     private FrameLayout root;
     private FrameLayout host;
+    private View switchBox; // the tab bar and its hairline, hidden while the first-run intro is open
     private Bundle savedState;
+    private String pendingRoute; // sanitized route JSON waiting for Snapp's start page to load
     private WebView web; // the visible one
     private String script;
     private GeolocationPermissions.Callback pendingGeoCallback;
@@ -77,7 +83,7 @@ public class MainActivity extends Activity {
     private volatile boolean introOpen;
     // Which service the rider picked (null until the first choice), and the picker while it is on screen.
     private String service;
-    private View chooser;
+    private WebView startView; // the first-run page while it is on screen
 
     private static int indexOf(String id) {
         return SERVICE_TAPSI.equals(id) ? 1 : 0;
@@ -102,7 +108,14 @@ public class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setBackgroundColor(Color.WHITE);
-        content.addView(buildSwitchBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(buildSwitchBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        View hairline = new View(this);
+        hairline.setBackgroundColor(0xFFEEF0F5);
+        box.addView(hairline, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1))));
+        switchBox = box;
+        content.addView(box, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         host = new FrameLayout(this);
         content.addView(host, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         FrameLayout frame = new FrameLayout(this);
@@ -114,18 +127,30 @@ public class MainActivity extends Activity {
 
         if (savedInstanceState != null) service = savedInstanceState.getString("service", service);
         if (service == null) {
-            showChooser();
+            showStart();
         } else {
             showService(indexOf(service));
         }
     }
 
-    /** Two tabs in the page UI's style: hairline buttons, a navy border and lime tint on the active one. */
+    /**
+     * The service switch: a soft segmented control like the panel's own, with the active service in navy. A second
+     * lime-tinted outline next to the panel's chips looked like another widget; this reads as the same family.
+     */
     private View buildSwitchBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        bar.setPadding(dp(12), dp(10), dp(12), dp(10));
+        bar.setPadding(dp(12), dp(8), dp(12), dp(8));
+
+        LinearLayout seg = new LinearLayout(this);
+        seg.setOrientation(LinearLayout.HORIZONTAL);
+        seg.setPadding(dp(3), dp(3), dp(3), dp(3));
+        GradientDrawable track = new GradientDrawable();
+        track.setColor(0xFFF2F3F7);
+        track.setCornerRadius(dp(14));
+        seg.setBackground(track);
+
         int[] labels = {R.string.service_snapp, R.string.service_tapsi};
         final String[] ids = {SERVICE_SNAPP, SERVICE_TAPSI};
         for (int i = 0; i < 2; i++) {
@@ -142,11 +167,10 @@ public class MainActivity extends Activity {
                     selectService(id);
                 }
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(40), 1f);
-            if (i == 0) lp.setMarginEnd(dp(8));
-            bar.addView(t, lp);
+            seg.addView(t, new LinearLayout.LayoutParams(0, dp(36), 1f));
             tabs[i] = t;
         }
+        bar.addView(seg, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         styleTabs(-1);
         return bar;
     }
@@ -155,11 +179,10 @@ public class MainActivity extends Activity {
         for (int i = 0; i < 2; i++) {
             boolean on = i == activeIndex;
             GradientDrawable bg = new GradientDrawable();
-            bg.setCornerRadius(dp(12));
-            bg.setColor(on ? 0xFFF6FBE6 : Color.WHITE);
-            bg.setStroke(Math.max(1, dp(1.5f)), on ? NAVY : 0xFFE2E8F0);
+            bg.setCornerRadius(dp(11));
+            bg.setColor(on ? NAVY : Color.TRANSPARENT);
             tabs[i].setBackground(bg);
-            tabs[i].setTextColor(on ? NAVY : 0xFF0F172A);
+            tabs[i].setTextColor(on ? Color.WHITE : 0xFF3A4058);
             tabs[i].setSelected(on);
         }
     }
@@ -176,6 +199,8 @@ public class MainActivity extends Activity {
         web = webs[index];
         styleTabs(index);
         web.requestFocus();
+        // a page that was hidden may have a stale or missing price of the other service
+        web.evaluateJavascript("window.__yeghadamFocus&&window.__yeghadamFocus()", null);
     }
 
     private void createWeb(int index) {
@@ -209,7 +234,7 @@ public class MainActivity extends Activity {
         cm.setAcceptCookie(true);
         cm.setAcceptThirdPartyCookies(web, true);
 
-        web.addJavascriptInterface(new Bridge(), "YeghadamNative");
+        web.addJavascriptInterface(new Bridge(index), "YeghadamNative");
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
@@ -218,87 +243,197 @@ public class MainActivity extends Activity {
         web.loadUrl(homeUrl(index));
     }
 
-    /** Full-screen choice between the two services. Shown on the first run and from the back button on a first page. */
-    private void showChooser() {
-        if (chooser != null || root == null) return;
-        FrameLayout c = new FrameLayout(this);
-        c.setBackgroundColor(NAVY);
-        c.setClickable(true);
-
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setGravity(Gravity.CENTER_HORIZONTAL);
-        column.setPadding(dp(28), 0, dp(28), 0);
-
-        TextView title = new TextView(this);
-        title.setText(R.string.choose_service);
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        column.addView(title);
-
-        TextView note = new TextView(this);
-        note.setText(R.string.choose_service_note);
-        note.setTextColor(0xFFB8BDD0);
-        note.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        note.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        noteLp.topMargin = dp(8);
-        noteLp.bottomMargin = dp(12);
-        column.addView(note, noteLp);
-
-        column.addView(serviceButton(R.string.service_snapp, SERVICE_SNAPP));
-        column.addView(serviceButton(R.string.service_tapsi, SERVICE_TAPSI));
-
-        c.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-        root.addView(c, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        chooser = c;
-
+    /**
+     * First-run screens (intro, notice with consent, choice of service) in one local page, shown before any service
+     * loads so the rider reads and accepts the notice first. With consent already given it opens on the choice.
+     */
+    private void showStart() {
+        if (startView != null || root == null) return;
+        WebView v = new WebView(this);
+        v.setBackgroundColor(NAVY);
+        WebSettings st = v.getSettings();
+        st.setJavaScriptEnabled(true);
+        st.setAllowFileAccess(false); // the asset folder stays readable; nothing else on the device does
+        st.setAllowContentAccess(false);
+        v.addJavascriptInterface(new StartBridge(), "StartNative");
+        v.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return true; // the page never navigates away
+            }
+        });
+        root.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        startView = v;
         Window w = getWindow();
         w.setStatusBarColor(NAVY);
         if (Build.VERSION.SDK_INT >= 27) w.setNavigationBarColor(NAVY);
         w.getDecorView().setSystemUiVisibility(0);
+        v.loadUrl("file:///android_asset/start.html");
     }
 
-    private View serviceButton(int label, final String id) {
-        TextView b = new TextView(this);
-        b.setText(label);
-        b.setGravity(Gravity.CENTER);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        b.setTypeface(Typeface.DEFAULT_BOLD);
-        boolean current = id.equals(service);
-        b.setTextColor(current ? NAVY : Color.WHITE);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(current ? LIME : 0xFF2A3050);
-        bg.setCornerRadius(dp(16));
-        b.setBackground(bg);
-        b.setPadding(0, dp(16), 0, dp(16));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(14);
-        b.setLayoutParams(lp);
-        b.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                selectService(id);
-            }
-        });
-        return b;
-    }
-
-    private void hideChooser() {
-        View c = chooser;
-        if (c == null) return;
-        chooser = null;
-        ViewGroup parent = (ViewGroup) c.getParent();
-        if (parent != null) parent.removeView(c);
+    private void hideStart() {
+        WebView v = startView;
+        if (v == null) return;
+        startView = null;
+        ViewGroup parent = (ViewGroup) v.getParent();
+        if (parent != null) parent.removeView(v);
+        v.destroy();
         if (splash == null && !introOpen) styleSystemBars();
+    }
+
+    private int consentGiven() {
+        return getSharedPreferences("yeghadam", MODE_PRIVATE).getInt("consent", 0);
+    }
+
+    /** What the start page can ask of the app. It is local and loads nothing from the network. */
+    private class StartBridge {
+        @JavascriptInterface
+        public String step() {
+            return consentGiven() >= NOTICE_VERSION ? "choose" : "intro";
+        }
+
+        @JavascriptInterface
+        public void accept() {
+            getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putInt("consent", NOTICE_VERSION).putString("flag_seenIntro", "1").apply();
+        }
+
+        /** Declined: close without remembering, so the notice is asked again next time. */
+        @JavascriptInterface
+        public void decline() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    finishAndRemoveTask();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void choose(final String id) {
+            if (!SERVICE_SNAPP.equals(id) && !SERVICE_TAPSI.equals(id)) return;
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    selectService(id);
+                }
+            });
+        }
+
+        /** The page has painted: the splash can go. */
+        @JavascriptInterface
+        public void ready() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    hideSplash();
+                }
+            });
+        }
+    }
+
+
+    private static boolean isSharedFlag(String name) {
+        return "seenIntro".equals(name) || "seenGuide".equals(name) || "peer".equals(name);
+    }
+
+    /** Accepts only 2 to 6 numeric lat/lng pairs and rebuilds them, so no page text is ever run as a script. */
+    private static String cleanPoints(String json) {
+        try {
+            JSONArray in = new JSONArray(json);
+            if (in.length() < 2 || in.length() > 6) return null;
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < in.length(); i++) {
+                JSONObject p = in.getJSONObject(i);
+                double lat = p.getDouble("lat"), lng = p.getDouble("lng");
+                if (Double.isNaN(lat) || Double.isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+                out.put(new JSONObject().put("lat", lat).put("lng", lng));
+            }
+            return out.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Keeps only a known status and a positive price from an answer. */
+    private static String cleanAnswer(String json) {
+        try {
+            JSONObject in = new JSONObject(json);
+            String status = in.optString("status", "none");
+            if (!status.equals("ok") && !status.equals("auth") && !status.equals("closed")) status = "none";
+            JSONObject out = new JSONObject().put("status", status);
+            double price = in.optDouble("price", 0);
+            if (status.equals("ok") && price > 0 && price < 1e10) out.put("price", price);
+            else if (status.equals("ok")) out.put("status", "none");
+            return out.toString();
+        } catch (Exception e) {
+            return "{\"status\":\"none\"}";
+        }
+    }
+
+    /**
+     * Ask the other service's page for its price of the route. Its WebView is created if the rider has not opened that
+     * service yet, and runs (hidden) until it answers. The page waits up to 20 seconds for its script to be ready.
+     */
+    private void askPeer(final int asker, final int id, String points) {
+        final int other = 1 - asker;
+        // The other service is never loaded just to ask its price: until the rider has opened it (and signed in), the
+        // answer is "not open", and the card offers to open it.
+        if (webs[other] == null) {
+            deliverPeer(asker, id, "{\"status\":\"closed\"}");
+            return;
+        }
+        WebView target = webs[other];
+        target.onResume();
+        String js = "(async function(){var n=0;while(!window.__yeghadamPeerQuote&&n<40){await new Promise(function(r){setTimeout(r,500)});n++}"
+                + "var a={status:'closed'};"
+                + "if(window.__yeghadamPeerQuote){try{a=await window.__yeghadamPeerQuote(" + points + ")}catch(e){a={status:'none'}}}"
+                + "YeghadamNative.peerResult(" + id + ",JSON.stringify(a))})()";
+        target.evaluateJavascript(js, null);
+    }
+
+    /**
+     * Show the other service, carrying the route. Tapsi takes it in its URL. Snapp has none: its start page is loaded and
+     * the page script places the route once it is ready (see onPageFinished).
+     */
+    private void openPeer(int from, String points) {
+        int to = 1 - from;
+        selectService(to == 1 ? SERVICE_TAPSI : SERVICE_SNAPP);
+        if (points == null) return;
+        try {
+            if (to == 1) {
+                JSONArray in = new JSONArray(points);
+                JSONArray dests = new JSONArray();
+                for (int i = 1; i < in.length(); i++) {
+                    dests.put(new JSONArray().put(in.getJSONObject(i).getDouble("lng")).put(in.getJSONObject(i).getDouble("lat")));
+                }
+                JSONObject o = in.getJSONObject(0);
+                String url = HOME_TAPSI + "preview?origin=" + Uri.encode(new JSONArray().put(o.getDouble("lng")).put(o.getDouble("lat")).toString())
+                        + "&destinations=" + Uri.encode(dests.toString());
+                webs[1].loadUrl(url);
+            } else {
+                pendingRoute = points;
+                webs[0].loadUrl(HOME_SNAPP + "pre-ride");
+            }
+        } catch (Exception e) {
+            // keep the page the rider is already on
+        }
+    }
+
+    private void deliverPeer(int asker, int id, String cleanJson) {
+        WebView w = webs[asker];
+        if (w == null) return;
+        w.evaluateJavascript("window.__yeghadamPeerDone&&window.__yeghadamPeerDone(" + id + "," + JSONObject.quote(cleanJson) + ")", null);
+    }
+
+    private void selectService(int index) {
+        selectService(index == 1 ? SERVICE_TAPSI : SERVICE_SNAPP);
     }
 
     /** Remember the service and show it. Each service keeps its own page and history. */
     private void selectService(String id) {
         service = id;
         getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putString("service", id).apply();
-        hideChooser();
+        hideStart();
         showService(indexOf(id));
     }
 
@@ -531,6 +666,12 @@ public class MainActivity extends Activity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             inject(view);
+            String route = pendingRoute;
+            if (route != null && Integer.valueOf(0).equals(view.getTag())) {
+                pendingRoute = null;
+                view.evaluateJavascript("(async function(){var n=0;while(!window.__yeghadamStartRoute&&n<40){await new Promise(function(r){setTimeout(r,500)});n++}"
+                        + "if(window.__yeghadamStartRoute)window.__yeghadamStartRoute(" + route + ")})()", null);
+            }
             hideSplash();
         }
 
@@ -597,6 +738,67 @@ public class MainActivity extends Activity {
      * third-party ones the site loads, so the bridge stays limited to harmless calls.
      */
     private class Bridge {
+        private final int index; // which service's WebView this bridge belongs to
+
+        Bridge(int index) {
+            this.index = index;
+        }
+
+        /**
+         * The page asks for the other service's price of a route. Nothing from the page reaches a script: the points
+         * are parsed and rebuilt here, and the other WebView answers with its own session.
+         */
+        @JavascriptInterface
+        public void peerQuote(final int id, final String pointsJson) {
+            final String points = cleanPoints(pointsJson);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (points == null) deliverPeer(index, id, "{\"status\":\"none\"}");
+                    else askPeer(index, id, points);
+                }
+            });
+        }
+
+        /** The rider asks to open the other service with this route (an empty list: just switch to it). */
+        @JavascriptInterface
+        public void peerOpen(final String pointsJson) {
+            final String points = cleanPoints(pointsJson);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    openPeer(index, points);
+                }
+            });
+        }
+
+        /** The other WebView's answer. Only a status and a price are forwarded. */
+        @JavascriptInterface
+        public void peerResult(final int id, final String json) {
+            final String clean = cleanAnswer(json);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    // the answering WebView is this one; the asker is the other service
+                    if (webs[index] != null && webs[index] != web) webs[index].onPause();
+                    deliverPeer(1 - index, id, clean);
+                }
+            });
+        }
+
+        /** A rider-level flag (first-run intro seen, guide seen, the answer about the other service's price), shared by both services. */
+        @JavascriptInterface
+        public String getFlag(String name) {
+            if (!isSharedFlag(name)) return "";
+            return getSharedPreferences("yeghadam", MODE_PRIVATE).getString("flag_" + name, "");
+        }
+
+        @JavascriptInterface
+        public void setFlag(String name, String value) {
+            if (!isSharedFlag(name) || value == null || value.length() > 8) return;
+            getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putString("flag_" + name, value).apply();
+        }
+
         /** Version of the "unofficial app" notice the rider accepted, 0 if none. Kept outside the page's storage. */
         @JavascriptInterface
         public int consentVersion() {
@@ -626,6 +828,7 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     introOpen = open;
+                    if (switchBox != null) switchBox.setVisibility(open ? View.GONE : View.VISIBLE);
                     if (splash != null) return; // the splash keeps navy bars and restyles them when it hides
                     if (open) {
                         Window w = getWindow();
@@ -661,7 +864,16 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (chooser != null || web == null) { // back from the picker leaves the app
+        if (startView != null) { // first-run screens: back goes to the previous one, else leaves the app
+            startView.evaluateJavascript("(window.startBack && window.startBack()) ? 1 : 0", new android.webkit.ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String handled) {
+                    if (!"1".equals(handled)) finish();
+                }
+            });
+            return;
+        }
+        if (web == null) {
             finish();
             return;
         }

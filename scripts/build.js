@@ -30,10 +30,20 @@ const manifest = JSON.parse(fs.readFileSync(at('extension', 'manifest.json'), 'u
 manifest.version = version;
 write(path.join(ext, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 write(path.join(ext, 'content.js'), banner('browser extension') + body);
+for (const file of ['relay.js', 'background.js']) {
+  write(path.join(ext, file), fs.readFileSync(at('extension', file), 'utf8'));
+}
 for (const icon of fs.readdirSync(at('extension', 'icons'))) {
   fs.mkdirSync(path.join(ext, 'icons'), { recursive: true });
   fs.copyFileSync(at('extension', 'icons', icon), path.join(ext, 'icons', icon));
 }
+
+// Firefox has no extension service workers: the same files, with the background as an event page.
+const ff = at('dist', 'extension-firefox');
+fs.rmSync(ff, { recursive: true, force: true });
+fs.cpSync(ext, ff, { recursive: true });
+const ffManifest = Object.assign({}, manifest, { background: { scripts: ['background.js'] } });
+write(path.join(ff, 'manifest.json'), JSON.stringify(ffManifest, null, 2) + '\n');
 
 // Android
 write(at('android', 'app', 'src', 'main', 'assets', 'yeghadam.js'), banner('Android') + body);

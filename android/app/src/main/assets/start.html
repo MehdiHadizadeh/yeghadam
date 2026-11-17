@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>یه‌قدم</title>
+<style>
+/* First-run screens of the Android app: intro, notice with consent, and the choice of service.
+   They run before any service page loads, so the rider reads and accepts the notice first. */
+@font-face{font-family:Vazirmatn;src:url(Vazirmatn.woff2) format('woff2');font-weight:100 900}
+:root{--ink:#15192e;--lime:#c5f04a;--mute:#b8bdd0}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--ink);color:#fff;font-family:Vazirmatn,Tahoma,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;text-align:inherit}
+button:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.glow{position:fixed;width:640px;height:640px;border-radius:50%;background:radial-gradient(circle,rgba(197,240,74,.15),rgba(197,240,74,0) 65%);left:-200px;bottom:-280px;pointer-events:none}
+.col{position:relative;height:100%;max-width:460px;margin:0 auto;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 18px) 24px calc(env(safe-area-inset-bottom,0px) + 18px)}
+.hd{display:flex;align-items:center;gap:10px;flex:none}
+.hd svg{width:34px;height:34px}
+.hd b{font-size:18px;font-weight:900}
+.chip{margin-inline-start:auto;font-size:12px;font-weight:700;color:var(--lime);border:1px solid rgba(197,240,74,.45);border-radius:999px;padding:1px 10px}
+.s{display:none;flex:1;min-height:0;flex-direction:column}
+.s.on{display:flex}
+.main{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding-top:min(8vh,56px);scrollbar-width:none}
+.main::-webkit-scrollbar{display:none}
+h1{font-size:clamp(30px,8.8vw,40px);font-weight:900;line-height:1.32;letter-spacing:-.02em;text-wrap:balance}
+h1 em{font-style:normal;color:var(--lime)}
+.s.on h1{animation:ri .55s cubic-bezier(.16,1,.3,1)}
+.lead{margin-top:14px;font-size:16px;line-height:1.85;color:var(--mute);max-width:36ch}
+.art{margin-top:26px;border-radius:22px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.art svg{display:block;width:100%;height:auto}
+.il{list-style:none;margin-top:18px}
+.il li{display:flex;gap:14px;align-items:flex-start;padding:13px 0;font-size:15px;line-height:1.75;color:#e4e7f1}
+.il li + li{border-top:1px solid rgba(255,255,255,.08)}
+.il i{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:50%;border:1.5px solid rgba(197,240,74,.55);color:var(--lime)}
+.il svg{width:16px;height:16px}
+.act{flex:none;display:flex;flex-direction:column;gap:6px;padding-top:14px}
+.dots{display:flex;gap:5px;justify-content:center;margin-bottom:10px}
+.dots i{width:7px;height:7px;border-radius:4px;background:rgba(255,255,255,.2);transition:all .3s}
+.dots i.on{width:20px;background:var(--lime)}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;border-radius:14px;font-size:16px;font-weight:800;background:var(--lime);color:var(--ink);transition:transform .12s}
+.btn:active{transform:scale(.985)}
+.btn svg{width:18px;height:18px}
+.txt{min-height:44px;text-align:center;font-size:14px;font-weight:700;color:var(--mute);border-radius:12px;display:flex;align-items:center;justify-content:center}
+.sv{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:12px;padding:16px 20px;border-radius:18px;background:#232948;font-size:20px;font-weight:900;transition:transform .12s,background .15s}
+.sv small{font-size:13px;font-weight:600;color:var(--mute)}
+.sv:active{transform:scale(.985);background:#2a3050}
+.tips{list-style:none;margin-top:26px;padding-top:6px;border-top:1px solid rgba(255,255,255,.08)}
+.tips li{display:flex;gap:12px;align-items:flex-start;padding:9px 0;font-size:14px;line-height:1.75;color:var(--mute)}
+.tips li::before{content:"";flex:none;width:6px;height:6px;border-radius:3px;background:var(--lime);margin-top:11px}
+@keyframes ri{from{opacity:.2;transform:translateY(14px)}}
+@media(max-height:720px){h1{font-size:28px}.main{padding-top:16px}.il{margin-top:8px}.il li{padding:8px 0;font-size:14px;line-height:1.65}.lead{font-size:15px;margin-top:10px}.art{margin-top:16px}.btn{min-height:48px}.tips{margin-top:14px}.tips li{padding:6px 0}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<div class="col">
+  <div class="hd">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#262b47"/><circle cx="7.9" cy="15.8" r="2.6" fill="none" stroke="#fff" stroke-width="1.3"/><circle cx="15.9" cy="8.7" r="4.6" fill="#c5f04a"/></svg>
+    <b>یه‌قدم</b><span class="chip">غیررسمی</span>
+  </div>
+
+  <section class="s" id="intro" aria-labelledby="t1">
+    <div class="main">
+      <h1 id="t1">یه قدم راه برو،<br><em>ارزون‌تر</em> سوار شو</h1>
+      <p class="lead">یه‌قدم چند نقطه‌ی نزدیکت رو از اسنپ و تپسی قیمت می‌گیره و ارزون‌ترها رو نشونت می‌ده: چقدر ارزون‌تر، چند متر پیاده. تصمیم با خودته.</p>
+      <div class="art"><svg viewBox="0 0 320 190" direction="ltr" aria-hidden="true">
+        <rect width="320" height="190" fill="#1d2240"/><path d="M0 92H320" stroke="#262c4d" stroke-width="18"/><path d="M110 0V190M228 0V190" stroke="#262c4d" stroke-width="10"/>
+        <path d="M78 92H194" stroke="#fff" stroke-opacity=".6" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="0.5 8"/>
+        <circle cx="62" cy="92" r="12" fill="#1d2240" stroke="#fff" stroke-width="3.5"/><circle cx="212" cy="92" r="15" fill="#c5f04a"/>
+        <g transform="translate(62 50)"><rect x="-40" y="-16" width="80" height="30" rx="10" fill="#262c4d"/><text y="5" font-size="13" font-weight="700" fill="#b8bdd0" text-anchor="middle" font-family="Vazirmatn">۸۵٬۰۰۰</text><path d="M-26 0H26" stroke="#b8bdd0" stroke-width="1.5"/></g>
+        <g transform="translate(212 48)"><rect x="-46" y="-17" width="92" height="32" rx="11" fill="#c5f04a"/><text y="5" font-size="14" font-weight="800" fill="#15192e" text-anchor="middle" font-family="Vazirmatn">۷۲٬۰۰۰</text></g>
+        <g transform="translate(137 122)"><rect x="-32" y="-13" width="64" height="22" rx="11" fill="#262c4d"/><text y="3" font-size="11" font-weight="700" fill="#e4e7f1" text-anchor="middle" font-family="Vazirmatn">۴۰ متر</text></g>
+        <g transform="translate(160 162)"><rect x="-128" y="-17" width="256" height="34" rx="17" fill="#15192e" stroke="#2f3658"/><text y="5" font-size="12.5" font-weight="700" fill="#fff" text-anchor="middle" direction="rtl" unicode-bidi="embed" font-family="Vazirmatn">۱۳٬۰۰۰ تومان ارزون‌تر، ۴۰ متر پیاده</text></g>
+      </svg></div>
+    </div>
+    <div class="act">
+      <div class="dots" aria-label="صفحه ۱ از ۳"><i class="on"></i><i></i><i></i></div>
+      <button class="btn" data-a="next">بعدی<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
+    </div>
+  </section>
+
+  <section class="s" id="notice" aria-labelledby="t2">
+    <div class="main" style="padding-top:min(5vh,36px)">
+      <h1 id="t2">قبل از شروع،<br><em>اینو بدون</em></h1>
+      <ul class="il">
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></i><span>یه‌قدم برنامه‌ی رسمی اسنپ و تپسی نیست و هیچ ربطی بهشون نداره.</span></li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></i><span>فقط قیمت می‌پرسه، با حساب خودت و روی گوشی خودت. هیچ‌وقت سفر درخواست یا لغو نمی‌کنه و اطلاعاتت از گوشیت بیرون نمی‌ره.</span></li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></i><span>قیمت سرویس دیگه رو فقط وقتی اجازه بدی می‌پرسه. قیمت نهایی همونیه که اسنپ یا تپسی موقع درخواست سفر نشون می‌ده.</span></li>
+        <li><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></i><span>بعیده، ولی ممکنه اسنپ یا تپسی استعلام خودکار رو خلاف قوانینش بدونه و حسابت رو محدود کنه. استفاده با مسئولیت خودته.</span></li>
+      </ul>
+    </div>
+    <div class="act">
+      <div class="dots" aria-label="صفحه ۲ از ۳"><i></i><i class="on"></i><i></i></div>
+      <button class="btn" data-a="accept">فهمیدم، قبول دارم</button>
+      <button class="txt" data-a="decline">نه، ممنون</button>
+    </div>
+  </section>
+
+  <section class="s" id="choose" aria-labelledby="t3">
+    <div class="main">
+      <h1 id="t3">با <em>اسنپ</em> می‌ری<br>یا <em>تپسی</em>؟</h1>
+      <p class="lead">هر وقت خواستی عوضش کن.</p>
+      <button class="sv" data-a="svc" data-k="snapp">اسنپ</button>
+      <button class="sv" data-a="svc" data-k="tapsi">تپسی</button>
+      <ul class="tips">
+        <li>مسیرت رو مثل همیشه بزن، بعد روی «ارزون‌ترش کن» بزن.</li>
+        <li>با «اعمال» نقطه‌ی ارزون‌تر جایگزین می‌شه. سفر رو خودت ثبت می‌کنی.</li>
+        <li>برای عوض کردن سرویس، بالای صفحه روی «اسنپ» یا «تپسی» بزن.</li>
+      </ul>
+    </div>
+    <div class="act"><div class="dots" aria-label="صفحه ۳ از ۳"><i></i><i></i><i class="on"></i></div></div>
+  </section>
+</div>
+<script>
+(function () {
+  'use strict';
+  var N = window.StartNative || {};
+  var order = ['intro', 'notice', 'choose'];
+  var current = null;
+  function show(id) {
+    current = id;
+    order.forEach(function (k) { document.getElementById(k).classList.toggle('on', k === id); });
+  }
+  function call(name, arg) { try { if (N[name]) return N[name](arg); } catch (e) {} }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-a]');
+    if (!t) return;
+    var a = t.getAttribute('data-a');
+    if (a === 'next') show('notice');
+    else if (a === 'accept') { call('accept'); show('choose'); }
+    else if (a === 'decline') call('decline');
+    else if (a === 'svc') call('choose', t.getAttribute('data-k'));
+  });
+  // Android back: handled here when there is a previous screen, else the app closes.
+  window.startBack = function () {
+    if (current === 'notice') { show('intro'); return true; }
+    return false;
+  };
+  var s = call('step');
+  show(order.indexOf(s) >= 0 ? s : 'intro');
+  requestAnimationFrame(function () { requestAnimationFrame(function () { call('ready'); }); });
+})();
+</script>
+</body>
+</html>
