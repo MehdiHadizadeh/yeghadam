@@ -42,8 +42,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
 /**
- * Hosts the Snapp or Tapsi passenger web app (app.snapp.taxi, app.tapsi.cab) in a WebView and injects
- * the Yeghadam script. Everything runs on the device with the rider's own session. The script only
+ * Hosts the Snapp and Tapsi passenger web apps (app.snapp.taxi, app.tapsi.cab), one WebView each behind a
+ * two-tab switch, and injects the Yeghadam script. The last used service opens first; the other WebView is
+ * only created when the rider switches to it. Everything runs on the device with the rider's own session. The script only
  * requests price quotes; it never creates a ride.
  */
 public class MainActivity extends Activity {
@@ -59,7 +60,13 @@ public class MainActivity extends Activity {
     private static final long SPLASH_MIN_MS = 900;
     private static final long SPLASH_MAX_MS = 10000;
 
-    private WebView web;
+    // One WebView per service behind a two-tab switch. A service's WebView is created the first time it is shown.
+    private final WebView[] webs = new WebView[2];
+    private final TextView[] tabs = new TextView[2];
+    private FrameLayout root;
+    private FrameLayout host;
+    private Bundle savedState;
+    private WebView web; // the visible one
     private String script;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
@@ -71,10 +78,13 @@ public class MainActivity extends Activity {
     // Which service the rider picked (null until the first choice), and the picker while it is on screen.
     private String service;
     private View chooser;
-    private boolean clearHistoryOnLoad;
 
-    private String homeUrl() {
-        return SERVICE_TAPSI.equals(service) ? HOME_TAPSI : HOME_SNAPP;
+    private static int indexOf(String id) {
+        return SERVICE_TAPSI.equals(id) ? 1 : 0;
+    }
+
+    private static String homeUrl(int index) {
+        return index == 1 ? HOME_TAPSI : HOME_SNAPP;
     }
 
     @Override
@@ -88,13 +98,92 @@ public class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
-        web = new WebView(this);
-        web.setBackgroundColor(Color.WHITE);
+        savedState = savedInstanceState;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setBackgroundColor(Color.WHITE);
+        content.addView(buildSwitchBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        host = new FrameLayout(this);
+        content.addView(host, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         FrameLayout frame = new FrameLayout(this);
-        frame.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        frame.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root = frame;
         setContentView(frame);
         if (savedInstanceState == null) showSplash(frame);
         else styleSystemBars();
+
+        if (savedInstanceState != null) service = savedInstanceState.getString("service", service);
+        if (service == null) {
+            showChooser();
+        } else {
+            showService(indexOf(service));
+        }
+    }
+
+    /** Two tabs in the page UI's style: hairline buttons, a navy border and lime tint on the active one. */
+    private View buildSwitchBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        bar.setPadding(dp(12), dp(10), dp(12), dp(10));
+        int[] labels = {R.string.service_snapp, R.string.service_tapsi};
+        final String[] ids = {SERVICE_SNAPP, SERVICE_TAPSI};
+        for (int i = 0; i < 2; i++) {
+            final String id = ids[i];
+            TextView t = new TextView(this);
+            t.setText(labels[i]);
+            t.setGravity(Gravity.CENTER);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            t.setTypeface(Typeface.DEFAULT_BOLD);
+            t.setClickable(true);
+            t.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    selectService(id);
+                }
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(40), 1f);
+            if (i == 0) lp.setMarginEnd(dp(8));
+            bar.addView(t, lp);
+            tabs[i] = t;
+        }
+        styleTabs(-1);
+        return bar;
+    }
+
+    private void styleTabs(int activeIndex) {
+        for (int i = 0; i < 2; i++) {
+            boolean on = i == activeIndex;
+            GradientDrawable bg = new GradientDrawable();
+            bg.setCornerRadius(dp(12));
+            bg.setColor(on ? 0xFFF6FBE6 : Color.WHITE);
+            bg.setStroke(Math.max(1, dp(1.5f)), on ? NAVY : 0xFFE2E8F0);
+            tabs[i].setBackground(bg);
+            tabs[i].setTextColor(on ? NAVY : 0xFF0F172A);
+            tabs[i].setSelected(on);
+        }
+    }
+
+    /** Show one service. Its WebView is created on first use; the hidden one stays paused. */
+    private void showService(int index) {
+        if (webs[index] == null) createWeb(index);
+        for (int i = 0; i < 2; i++) {
+            WebView w = webs[i];
+            if (w == null) continue;
+            w.setVisibility(i == index ? View.VISIBLE : View.GONE);
+            if (i == index) w.onResume(); else w.onPause();
+        }
+        web = webs[index];
+        styleTabs(index);
+        web.requestFocus();
+    }
+
+    private void createWeb(int index) {
+        WebView web = new WebView(this);
+        web.setTag(index);
+        web.setBackgroundColor(Color.WHITE);
+        host.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        webs[index] = web;
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -124,18 +213,14 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
-        if (savedInstanceState != null) {
-            web.restoreState(savedInstanceState);
-        } else if (service == null) {
-            showChooser();
-        } else {
-            web.loadUrl(homeUrl());
-        }
+        Bundle st = savedState == null ? null : savedState.getBundle("web" + index);
+        if (st != null && web.restoreState(st) != null) return;
+        web.loadUrl(homeUrl(index));
     }
 
     /** Full-screen choice between the two services. Shown on the first run and from the back button on a first page. */
     private void showChooser() {
-        if (chooser != null || web == null || !(web.getParent() instanceof ViewGroup)) return;
+        if (chooser != null || root == null) return;
         FrameLayout c = new FrameLayout(this);
         c.setBackgroundColor(NAVY);
         c.setClickable(true);
@@ -166,7 +251,7 @@ public class MainActivity extends Activity {
         column.addView(serviceButton(R.string.service_tapsi, SERVICE_TAPSI));
 
         c.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-        ((ViewGroup) web.getParent()).addView(c, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(c, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         chooser = c;
 
         Window w = getWindow();
@@ -209,15 +294,12 @@ public class MainActivity extends Activity {
         if (splash == null && !introOpen) styleSystemBars();
     }
 
-    /** Remember the service and open its home page, unless it is already the one on screen. */
+    /** Remember the service and show it. Each service keeps its own page and history. */
     private void selectService(String id) {
-        boolean same = id.equals(service);
         service = id;
         getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putString("service", id).apply();
         hideChooser();
-        if (same) return;
-        clearHistoryOnLoad = true; // back must not return to the other service
-        web.loadUrl(homeUrl());
+        showService(indexOf(id));
     }
 
     private void styleSystemBars() {
@@ -375,7 +457,7 @@ public class MainActivity extends Activity {
     }
 
     /** Links that should leave the app (maps, stores, phone, etc.). */
-    private boolean openExternally(Uri uri) {
+    private boolean openExternally(WebView view, Uri uri) {
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
         if (scheme.equals("http") || scheme.equals("https")) {
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
@@ -400,7 +482,7 @@ public class MainActivity extends Activity {
                 i.setSelector(null);
                 if (!launch(i)) {
                     String fallback = i.getStringExtra("browser_fallback_url");
-                    if (fallback != null) web.loadUrl(fallback);
+                    if (fallback != null) view.loadUrl(fallback);
                 }
             } catch (Exception e) {
                 // ignore malformed intent URIs
@@ -431,13 +513,13 @@ public class MainActivity extends Activity {
     private class Client extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            return openExternally(request.getUrl());
+            return openExternally(view, request.getUrl());
         }
 
         @SuppressWarnings("deprecation")
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            return openExternally(Uri.parse(url));
+            return openExternally(view, Uri.parse(url));
         }
 
         @Override
@@ -448,10 +530,6 @@ public class MainActivity extends Activity {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
-            if (clearHistoryOnLoad) {
-                clearHistoryOnLoad = false;
-                view.clearHistory();
-            }
             inject(view);
             hideSplash();
         }
@@ -459,12 +537,14 @@ public class MainActivity extends Activity {
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             if (request != null && request.isForMainFrame()) {
+                Object tag = view.getTag();
+                String home = homeUrl(tag instanceof Integer ? (Integer) tag : 0);
                 String html = "<!doctype html><html dir='rtl'><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
                         + "<style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;margin:0;color:#15192e;text-align:center;padding:0 24px;line-height:1.7}"
                         + "h3{margin:0 0 4px}div{color:#3a4058}"
                         + "a{margin-top:20px;background:#15192e;color:#fff;padding:12px 28px;border-radius:14px;text-decoration:none;font-weight:bold}</style></head>"
                         + "<body><h3>اتصال برقرار نشد</h3><div>اینترنت یا فیلترشکن را بررسی کن و دوباره امتحان کن.</div>"
-                        + "<a href='" + homeUrl() + "'>تلاش دوباره</a></body></html>";
+                        + "<a href='" + home + "'>تلاش دوباره</a></body></html>";
                 view.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
                 hideSplash();
             }
@@ -581,16 +661,17 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (chooser != null) { // back from the picker leaves the app
+        if (chooser != null || web == null) { // back from the picker leaves the app
             finish();
             return;
         }
-        web.evaluateJavascript("(window.__yeghadamBack && window.__yeghadamBack()) ? 1 : 0", new android.webkit.ValueCallback<String>() {
+        final WebView current = web;
+        current.evaluateJavascript("(window.__yeghadamBack && window.__yeghadamBack()) ? 1 : 0", new android.webkit.ValueCallback<String>() {
             @Override
             public void onReceiveValue(String handled) {
                 if ("1".equals(handled)) return;
-                if (web.canGoBack()) web.goBack();
-                else showChooser(); // first page: offer the other service; back again leaves
+                if (current.canGoBack()) current.goBack();
+                else finish();
             }
         });
     }
@@ -598,7 +679,13 @@ public class MainActivity extends Activity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        web.saveState(outState);
+        if (service != null) outState.putString("service", service);
+        for (int i = 0; i < 2; i++) {
+            if (webs[i] == null) continue;
+            Bundle b = new Bundle();
+            webs[i].saveState(b);
+            outState.putBundle("web" + i, b);
+        }
     }
 
     @Override
@@ -616,10 +703,13 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (web != null) {
-            web.destroy();
-            web = null;
+        for (int i = 0; i < 2; i++) {
+            if (webs[i] != null) {
+                webs[i].destroy();
+                webs[i] = null;
+            }
         }
+        web = null;
         super.onDestroy();
     }
 }
