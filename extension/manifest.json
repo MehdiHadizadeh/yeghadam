@@ -3,7 +3,7 @@
   "name": "یه‌قدم — یه قدم اون‌ورتر، ارزون‌تر",
   "short_name": "یه‌قدم",
   "version": "0.0.0",
-  "description": "چند قدم اون‌ورتر از مبدا یا مقصدت رو پیدا می‌کنه که اسنپ یا تپسی (ماشین یا موتور) ارزون‌تر حساب می‌کنه. فقط قیمت می‌پرسه و هیچ سفری ثبت نمی‌کنه. غیررسمی.",
+  "description": "چند قدم اون‌ورتر از مبدا یا مقصدت رو پیدا می‌کنه که اسنپ یا تپسی (ماشین یا موتور) ارزون‌تر حساب می‌کنه. اگه بخوای قیمت سرویس دیگه رو هم کنارش می‌ذاره. فقط قیمت می‌پرسه و هیچ سفری ثبت نمی‌کنه. غیررسمی.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -16,8 +16,17 @@
       "js": ["content.js"],
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": ["https://app.snapp.taxi/*", "https://app.tapsi.cab/*"],
+      "js": ["relay.js"],
+      "run_at": "document_start"
     }
   ],
+  "host_permissions": ["https://app.snapp.taxi/*", "https://app.tapsi.cab/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "browser_specific_settings": {
     "gecko": {
       "id": "yeghadam@yeghadam.app",
