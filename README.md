@@ -35,11 +35,12 @@
 1. در اسنپ یا تپسی مبدا و مقصد را انتخاب کن تا قیمت بیاید، بعد روی **«ارزون‌ترش کن»** بزن.
 2. بگو امروز تا کجا حاضری پیاده بروی، برای مبدا و مقصد جدا: ۱۰۰، ۲۰۰ یا ۳۰۰ متر. ماشین یا موتور.
 3. چند ثانیه بعد، حداکثر سه پیشنهاد می‌بینی: چقدر ارزان‌تر، چند متر پیاده، کجا.
-4. روی **«اعمال»** بزن. در اسنپ پین به همان نقطه می‌رود و فقط تأییدش می‌کنی؛ در تپسی خود صفحه با نقطه‌ی جدید باز می‌شود و نیازی به تأیید نیست. بعد پیاده تا نقطه‌ی جدید برو.
+4. روی **«اعمال»** بزن. در اسنپ پین به همان نقطه می‌رود و خودش تأیید می‌شود (اگر تأیید نشد، روی پین بزن)؛ در تپسی خود صفحه با نقطه‌ی جدید باز می‌شود. بعد پیاده تا نقطه‌ی جدید برو.
+5. اگر اجازه بدهی، قیمت همان مسیر در سرویس دیگر هم کنار پیشنهادها نشان داده می‌شود و **«برو به تپسی»** (یا اسنپ) همان مسیر را آن‌جا باز می‌کند.
 
-بار اول یک راهنمای شش‌قدمی همین‌ها را با تصویر نشان می‌دهد و هر وقت خواستی با دکمه‌ی **؟** بالای پنل دوباره باز می‌شود.
+بار اول یک راهنمای هفت‌قدمی همین‌ها را با تصویر نشان می‌دهد و هر وقت خواستی با دکمه‌ی **؟** بالای پنل دوباره باز می‌شود.
 
-<p align="center"><img src="docs/images/tutorial.gif" width="300" alt="راهنمای شش‌قدمی"></p>
+<p align="center"><img src="docs/images/tutorial.gif" width="300" alt="راهنمای هفت‌قدمی"></p>
 
 ## امکانات
 
@@ -49,19 +50,21 @@
 - **اسنپ و تپسی،** ماشین یا موتور، هر جا سرویس آن را برای مسیرت ارائه کند.
 - **فاصله‌ی جدا برای مبدا و مقصد.** مثلاً از مبدا ۱۰۰ متر و از مقصد ۳۰۰ متر. با «همین‌جا» یکی از دو سر سر جایش می‌ماند و همه‌ی استعلام‌ها برای سر دیگر خرج می‌شود.
 - **قیمت یک نقطه‌ی دلخواه:** انگشتت را روی نقشه نگه دار (در کامپیوتر: کلیک راست).
+- **مقایسه‌ی دو سرویس.** با اجازه‌ی خودت، قیمت همین مسیر در سرویس دیگر کنار قیمت فعلی می‌آید و می‌گوید چقدر ارزان‌تر یا گران‌تر است. هر صفحه فقط با سرویس خودش حرف می‌زند؛ جواب سرویس دیگر را صفحه‌ی خودش می‌دهد، با حساب خودت.
+- **عوض کردن سرویس بدون دردسر.** در اپ اندروید دو تب «اسنپ | تپسی» بالای صفحه است و هر کدام صفحه‌ی خودش را نگه می‌دارد. «برو به تپسی/اسنپ» مسیر را همراه می‌برد.
 - **قفل قیمت (اسنپ):** اسنپ هر قیمت را چند دقیقه ثابت نگه می‌دارد. یه‌قدم این را تشخیص می‌دهد و می‌گوید جابه‌جا شدن به نفعت هست یا نه.
 
 ## نصب
 
-**اندروید:** فایل `yeghadam-x.y.z.apk` را از بخش [Releases](../../releases) دانلود و نصب کن، بعد سرویس (اسنپ یا تپسی) را انتخاب کن و با حساب خودت وارد شو. بعداً از صفحه‌ی اول با دکمه‌ی برگشت می‌توانی سرویس را عوض کنی.
+**اندروید:** فایل `yeghadam-x.y.z.apk` را از بخش [Releases](../../releases) دانلود و نصب کن، بار اول مقدمه و اعلان «غیررسمی» را می‌بینی و باید قبولش کنی، بعد سرویس (اسنپ یا تپسی) را انتخاب می‌کنی و با حساب خودت وارد می‌شوی. بعداً با نوار «اسنپ | تپسی» بالای صفحه سرویس را عوض کن؛ برنامه با آخرین سرویس باز می‌شود.
 
 **کروم، اج و مرورگرهای کرومیوم:**
 1. فایل `yeghadam-extension-x.y.z.zip` را از [Releases](../../releases) دانلود و از حالت فشرده خارج کن.
 2. به `chrome://extensions` برو و **Developer mode** را روشن کن.
 3. **Load unpacked** را بزن و پوشه‌ی باز شده را انتخاب کن.
-4. در [app.snapp.taxi](https://app.snapp.taxi) یا [app.tapsi.cab](https://app.tapsi.cab) مبدا و مقصد را انتخاب کن و روی «ارزون‌ترش کن» بزن.
+4. در [app.snapp.taxi](https://app.snapp.taxi) یا [app.tapsi.cab](https://app.tapsi.cab) مبدا و مقصد را انتخاب کن و روی «ارزون‌ترش کن» بزن. بعد از هر بار نصب یا به‌روزرسانی افزونه، تب‌های باز اسنپ و تپسی را یک بار رفرش کن.
 
-**فایرفاکس ۱۲۸ به بعد:** در `about:debugging#/runtime/this-firefox` روی **Load Temporary Add-on** بزن و `manifest.json` داخل همان پوشه را انتخاب کن.
+**فایرفاکس ۱۲۸ به بعد:** در `about:debugging#/runtime/this-firefox` روی **Load Temporary Add-on** بزن و `manifest.json` داخل پوشه‌ی `dist/extension-firefox` را انتخاب کن (فایرفاکس پس‌زمینه‌ی سرویس‌ورکر ندارد، پس نسخه‌ی خودش را می‌خواهد).
 
 ## محدودیت‌ها
 
@@ -76,13 +79,15 @@
 
 **چرا بعضی وقت‌ها صرفه‌ای پیدا نمی‌شود؟** شب‌ها و مسیرهای خلوت قیمت نقاط اطراف تقریباً یکی است. ساعت‌های شلوغ و بلوارهای دوطرفه معمولاً نتیجه‌ی بهتری دارند.
 
-**سرویس را چطور عوض کنم؟** در اپ اندروید از صفحه‌ی اول دکمه‌ی برگشت را بزن. در مرورگر کافی است سایت دیگر را باز کنی.
+**سرویس را چطور عوض کنم؟** در اپ اندروید روی «اسنپ» یا «تپسی» بالای صفحه بزن. در مرورگر کافی است سایت دیگر را در یک تب دیگر باز کنی؛ لینک «برو به …» در پنل همین کار را با همان مسیر می‌کند.
+
+**قیمت سرویس دیگر چطور گرفته می‌شود؟** اولین بار می‌پرسد. اگر بگویی «بگیر»، همان صفحه‌ی سرویس دیگر (تب دیگر یا تب دیگر اپ) با نشست خودت قیمت مسیر را می‌پرسد و جواب را برمی‌گرداند. اگر آن سرویس باز نباشد، فقط می‌گوید باز نیست و چیزی لود نمی‌کند. با «نه، لازم نیست» دیگر نمی‌پرسد.
 
 **باگ دیدم یا پیشنهاد دارم.** در [Issues](../../issues) بنویس و توکن و آدرس واقعی‌ات را حذف کن. مشکل امنیتی را طبق [SECURITY.md](SECURITY.md) خصوصی گزارش کن.
 
 ## حریم خصوصی و امنیت حساب
 
-یه‌قدم سرور ندارد و هیچ داده‌ای جمع نمی‌کند. با همان حسابی کار می‌کند که در اسنپ یا تپسی وارد شده‌ای و فقط با این آدرس‌ها حرف می‌زند:
+یه‌قدم سرور ندارد و هیچ داده‌ای جمع نمی‌کند. با همان حسابی کار می‌کند که در اسنپ یا تپسی وارد شده‌ای و فقط با این آدرس‌ها حرف می‌زند. اگر مقایسه‌ی دو سرویس را بپذیری، مسیر (فقط نقطه‌ها) و قیمت بین دو صفحه‌ی خودت جابه‌جا می‌شود و بیرون از دستگاهت نمی‌رود:
 
 - `app.snapp.taxi/api/v3/price` یا `api.tapsi.cab/api/v3.1/ride/preview` برای استعلام قیمت، با نشست خودت که از دستگاهت بیرون نمی‌رود؛
 - `tile.snappmaps.ir` و `tap30.services` برای نقشه‌ی عمومی خیابان‌ها.
@@ -99,10 +104,10 @@ Yeghadam is a script injected into the Snapp and Tapsi passenger web apps, shipp
 
 ```
 src/core.js        search engine, no DOM: vector tiles, walking graph, candidates, ranking (runs in Node for tests)
-src/ui.js          page layer: route tracking, map overlay, panel, guided apply
+src/ui.js          page layer: route tracking, map overlay, panel, guided apply, price comparison with the other service
 scripts/build.js   bundles both into dist/extension/ and the Android assets
-extension/         extension manifest and icons
-android/           Android app (Java, no AndroidX)
+extension/         extension manifest, icons, relay.js (content script) and background.js (routes messages between the two services' tabs)
+android/           Android app (Java, no AndroidX); assets/start.html is the local first-run page (intro, notice, choice of service)
 test/              unit tests for the core
 brand/             logo source image (drawn by scripts/make-icons.py)
 docs/images/       README images
@@ -112,7 +117,7 @@ docs/images/       README images
 
 - **Core and page layer:** plain JavaScript with no runtime dependencies and no bundler. `scripts/build.js` joins `src/core.js` and `src/ui.js` into one script. Vector tiles (protobuf) are decoded by a small decoder in the core.
 - **Browser extension:** Manifest V3 content script running in the page world (`world: "MAIN"`), so it can see the page's own price requests and map. Chrome, Edge and other Chromium browsers. The manifest also targets Firefox 128 or later (desktop and Android), but that has not been run yet.
-- **Android app:** Java without AndroidX, built with Gradle. A `WebView` hosts Snapp or Tapsi and injects the same script. minSdk 24, targetSdk 34.
+- **Android app:** Java without AndroidX, built with Gradle. One `WebView` per service behind a two-tab switch (the second is created on first use) hosts Snapp or Tapsi and injects the same script; a small native bridge passes the price question between the two. minSdk 24, targetSdk 34.
 - **Tests:** Node's built-in test runner (`node:test`), no test framework.
 - **Releases:** GitHub Actions builds, signs and publishes the APK and the extension zip.
 - **Tooling:** Python 3 with Pillow draws the icons.
@@ -141,6 +146,8 @@ Load `dist/extension/` with **Load unpacked** to try local changes.
 3. A search spends at most 25 quotes: a spread phase on both ends, then the remaining budget steps around the best point found so far.
 4. Snapp locks a quote for a few minutes per route. When the base price is older than the search, one extra quote on the same street shows the current price. Tapsi quotes expire after a minute and its page refreshes them on its own, so the panel shows the live price and warns when it moves.
 5. Results are the Pareto front of walking distance against price, limited to three options.
+
+The other service's price: each page only ever calls its own API. With the rider's consent, the page asks the shell (Android bridge, or the extension's relay and background script) to hand the route to the page of the other service, which quotes it with its own session and answers. Opening the other service carries the route: Tapsi takes it in its URL; for Snapp the script moves the map and presses Snapp's own confirm buttons on its start page.
 
 On Snapp the route is taken from its own price requests, and only once their first and last points sit on the origin and destination markers, so previews made while dragging a pin are ignored. On Tapsi the route is read from the page URL, and applying a suggestion opens the same URL with the new point.
 

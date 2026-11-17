@@ -7,6 +7,7 @@ Thanks for helping. Yeghadam is a small project, so the rules are short.
 - Open an issue first for anything bigger than a fix, so we agree on the direction.
 - The app only asks for prices. A change that requests, confirms or cancels a ride will not be merged.
 - Nothing may leave the rider's device except the requests to Snapp or Tapsi that the script already makes. There is no server and no analytics.
+- A page only calls its own service. Anything about the other service goes through the shell (extension relay or Android bridge) to the page of that service.
 
 ## Set up
 
