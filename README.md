@@ -160,7 +160,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Security problems go through [SEC
 The version lives in `package.json` only; the extension manifest and the Android version are derived from it.
 
 1. Bump `version` in `package.json`, add the release to `CHANGELOG.md` and commit.
-2. Tag and push: `git tag v2.1.0 && git push origin v2.1.0`.
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The [Release workflow](.github/workflows/release.yml) tests, builds and signs the APK, zips the extension and publishes both with checksums.
 
 The release keystore is never committed. It is stored as repository secrets: `KEYSTORE_BASE64` (`base64 -w0 release.p12`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`.
