@@ -8,7 +8,7 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/MehdiHadizadeh/yeghadam"></a>
 </p>
 
-<p align="center"><sub><b>English:</b> Yeghadam finds a cheaper pickup or drop-off point a few steps away in the Snapp and Tapsi web apps. It asks the service for prices of nearby points you can really walk to and shows a few short suggestions. Unofficial, no server, and it never requests a ride. Android app and browser extension; see <a href="#development">Development</a>.</sub></p>
+<p align="center"><sub><b>English:</b> Yeghadam finds a cheaper pickup or drop-off point a few steps away in the Snapp and Tapsi web apps. It asks the service for prices of nearby points you can really walk to and shows a few short suggestions. Unofficial, no server, and it never requests a ride. Android app, browser extension and an iPhone Safari userscript; see <a href="#development">Development</a>.</sub></p>
 
 <div dir="rtl">
 
@@ -58,13 +58,20 @@
 
 **اندروید:** فایل `yeghadam-x.y.z.apk` را از بخش [Releases](../../releases) دانلود و نصب کن، بار اول مقدمه و اعلان «غیررسمی» را می‌بینی و باید قبولش کنی، بعد سرویس (اسنپ یا تپسی) را انتخاب می‌کنی و با حساب خودت وارد می‌شوی. بعداً با نوار «اسنپ | تپسی» بالای صفحه سرویس را عوض کن؛ برنامه با آخرین سرویس باز می‌شود.
 
+**آیفون (Safari):** برای آیفون برنامه‌ی جدا نداریم و اپ استور هم لازم نیست. اسکریپت داخل Safari اجرا می‌شود.
+1. اپ رایگان **Userscripts** را از App Store نصب کن و در تنظیمات گوشی، `Safari > Extensions` را روشن و دسترسی به `app.snapp.taxi` و `app.tapsi.cab` را بده.
+2. در اپ Userscripts یک پوشه برای اسکریپت‌ها انتخاب کن. فایل `yeghadam-x.y.z.user.js` را از [Releases](../../releases) دانلود و در همان پوشه بگذار.
+3. در Safari اسنپ یا تپسی را باز کن، وارد شو و مسیر بزن؛ دکمه‌ی **«ارزون‌ترش کن»** می‌آید.
+
+در این نسخه مقایسه‌ی قیمت دو سرویس و «برو به تپسی/اسنپ» نیست، چون یک صفحه به تب سرویس دیگر دسترسی ندارد.
+
 **کروم، اج و مرورگرهای کرومیوم:**
 1. فایل `yeghadam-extension-x.y.z.zip` را از [Releases](../../releases) دانلود و از حالت فشرده خارج کن.
 2. به `chrome://extensions` برو و **Developer mode** را روشن کن.
 3. **Load unpacked** را بزن و پوشه‌ی باز شده را انتخاب کن.
 4. در [app.snapp.taxi](https://app.snapp.taxi) یا [app.tapsi.cab](https://app.tapsi.cab) مبدا و مقصد را انتخاب کن و روی «ارزون‌ترش کن» بزن. بعد از هر بار نصب یا به‌روزرسانی افزونه، تب‌های باز اسنپ و تپسی را یک بار رفرش کن.
 
-**فایرفاکس ۱۲۸ به بعد:** فایل `yeghadam-extension-firefox-x.y.z.zip` را از [Releases](../../releases) دانلود و از حالت فشرده خارج کن، بعد در `about:debugging#/runtime/this-firefox` روی **Load Temporary Add-on** بزن و `manifest.json` داخلش را انتخاب کن. فایرفاکس پس‌زمینه‌ی سرویس‌ورکر ندارد، پس نسخه‌ی خودش را می‌خواهد. این نسخه هنوز در فایرفاکس اجرا نشده و در addons.mozilla.org منتشر نشده است. فایرفاکس اندروید فقط افزونه‌ی همان فروشگاه را نصب می‌کند، پس فعلاً روی موبایل نصب‌شدنی نیست.
+**فایرفاکس ۱۲۸ به بعد:** فایل `yeghadam-extension-firefox-x.y.z.zip` را از [Releases](../../releases) دانلود و از حالت فشرده خارج کن، بعد در `about:debugging#/runtime/this-firefox` روی **Load Temporary Add-on** بزن و `manifest.json` داخلش را انتخاب کن. فایرفاکس پس‌زمینه‌ی سرویس‌ورکر ندارد، پس نسخه‌ی خودش را می‌خواهد.
 
 ## محدودیت‌ها
 
@@ -100,7 +107,7 @@
 
 ## Development
 
-Yeghadam is a script injected into the Snapp and Tapsi passenger web apps, shipped two ways: a Manifest V3 browser extension and a small Android app that hosts the web app in a WebView.
+Yeghadam is a script injected into the Snapp and Tapsi passenger web apps, shipped three ways: a Manifest V3 browser extension, a small Android app that hosts the web app in a WebView, and a userscript for Safari on iPhone.
 
 ```
 src/core.js        search engine, no DOM: vector tiles, walking graph, candidates, ranking (runs in Node for tests)
@@ -116,7 +123,8 @@ docs/images/       README images
 ### Tech stack
 
 - **Core and page layer:** plain JavaScript with no runtime dependencies and no bundler. `scripts/build.js` joins `src/core.js` and `src/ui.js` into one script. Vector tiles (protobuf) are decoded by a small decoder in the core.
-- **Browser extension:** Manifest V3 content script running in the page world (`world: "MAIN"`), so it can see the page's own price requests and map. Chrome, Edge and other Chromium browsers. The manifest also targets Firefox 128 or later (desktop and Android), but that has not been run yet.
+- **Browser extension:** Manifest V3 content script running in the page world (`world: "MAIN"`), so it can see the page's own price requests and map. Chrome, Edge and other Chromium browsers. The manifest also targets Firefox 128 or later.
+- **Userscript:** the same script with a metadata header (`@run-at document-start`, `@inject-into page`, `@grant none`), built to `dist/userscript/yeghadam.user.js` for the Userscripts app in Safari on iOS. It has no relay, so the other service's price is switched off (`window.YeghadamNoPeer`).
 - **Android app:** Java without AndroidX, built with Gradle. One `WebView` per service behind a two-tab switch (the second is created on first use) hosts Snapp or Tapsi and injects the same script; a small native bridge passes the price question between the two. minSdk 24, targetSdk 34.
 - **Tests:** Node's built-in test runner (`node:test`), no test framework.
 - **Releases:** GitHub Actions builds, signs and publishes the APK and the extension zip.
@@ -132,7 +140,7 @@ docs/images/       README images
 
 ```bash
 npm test                         # unit tests
-npm run build                    # dist/extension/ and android/app/src/main/assets/yeghadam.js
+npm run build                    # dist/extension/, dist/userscript/yeghadam.user.js and android/app/src/main/assets/yeghadam.js
 gradle -p android assembleDebug  # debug APK (runs the script build first)
 npm run icons                    # redraw every icon size
 ```
@@ -157,7 +165,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Security problems go through [SEC
 
 ### Releasing
 
-The version lives in `package.json` only; the extension manifest and the Android version are derived from it.
+The version lives in `package.json` only; the extension manifest, the userscript header and the Android version are derived from it.
 
 1. Bump `version` in `package.json`, add the release to `CHANGELOG.md` and commit.
 2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.

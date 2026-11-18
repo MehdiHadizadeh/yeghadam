@@ -1,6 +1,7 @@
-// Builds the injected script from src/core.js + src/ui.js for both shells.
+// Builds the injected script from src/core.js + src/ui.js for every shell.
 //   npm run build
 // Writes:
+//   dist/userscript/yeghadam.user.js        userscript for Safari on iOS (Userscripts app) and other userscript managers
 //   dist/extension/                         unpacked browser extension (load it as is, or zip it)
 //   android/app/src/main/assets/yeghadam.js the script the Android app injects
 const fs = require('fs');
@@ -47,3 +48,19 @@ write(path.join(ff, 'manifest.json'), JSON.stringify(ffManifest, null, 2) + '\n'
 
 // Android
 write(at('android', 'app', 'src', 'main', 'assets', 'yeghadam.js'), banner('Android') + body);
+
+// Userscript: one file for both services, run in the page itself like the extension's page-world content script.
+// A single page cannot reach the other service's tab, so the price comparison is switched off.
+const userscript = `// ==UserScript==
+// @name         Yeghadam (یه‌قدم)
+// @description  Finds a cheaper pickup or drop-off point a few steps away in the Snapp and Tapsi web apps. Unofficial; it only asks for price quotes.
+// @version      ${version}
+// @match        https://app.snapp.taxi/*
+// @match        https://app.tapsi.cab/*
+// @run-at       document-start
+// @inject-into  page
+// @grant        none
+// @license      MIT
+// ==/UserScript==
+`;
+write(at('dist', 'userscript', 'yeghadam.user.js'), userscript + banner('userscript') + 'window.YeghadamNoPeer = true;\n' + body);

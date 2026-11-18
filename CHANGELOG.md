@@ -2,10 +2,15 @@
 
 Notable changes per release. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- A userscript build (`yeghadam-x.y.z.user.js`) for Safari on iPhone through the Userscripts app, no App Store listing needed. It runs the same page script; the two-service price comparison is off because a single page cannot reach the other service's tab.
+
 ## [2.4.0] - 2026-11-18
 
 ### Added
-- A separate Firefox build of the extension (`yeghadam-extension-firefox-x.y.z.zip`) in each release. It uses an event page instead of a service worker. It has not been run in Firefox yet, and Firefox for Android only installs add-ons from addons.mozilla.org, so it is not listed there.
+- A separate Firefox build of the extension (`yeghadam-extension-firefox-x.y.z.zip`) in each release. It uses an event page instead of a service worker.
 - The Android app has a two-tab switch between Snapp and Tapsi. Each service keeps its own page and history, so switching does not reload anything. The second service is only loaded the first time it is opened.
 - The panel shows the other service's price for the same route (Snapp next to Tapsi and the other way round) and how much cheaper or dearer it is. The other service's page quotes it with its own session, so no token or cookie leaves its page.
 - An "open Tapsi" / "open Snapp" link in that line opens the other service with the same route, in the extension (another tab) and in the Android app (the other tab of the switch). Tapsi takes the route in its URL. For Snapp the script moves the map to the origin and the destination and presses Snapp's own confirm buttons.

@@ -59,6 +59,7 @@ jobs:
           "$apksigner" verify --print-certs android/app/build/outputs/apk/release/app-release.apk
           mkdir -p out
           cp android/app/build/outputs/apk/release/app-release.apk "out/yeghadam-$VERSION.apk"
+          cp dist/userscript/yeghadam.user.js "out/yeghadam-$VERSION.user.js"
           (cd dist/extension && zip -r "../../out/yeghadam-extension-$VERSION.zip" .)
           (cd dist/extension-firefox && zip -r "../../out/yeghadam-extension-firefox-$VERSION.zip" .)
           (cd out && sha256sum * > SHA256SUMS.txt)

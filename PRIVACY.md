@@ -18,7 +18,7 @@ Nothing is sent anywhere else. Your token and session never leave your device.
 
 ## The other service's price
 
-If you say yes, once, the page also gets the price of the same route from the other service. A page never calls the other service itself. It hands the route points (latitude and longitude only) to the page of the other service, in the other browser tab or the other tab of the Android app, which asks its own API with its own session and hands back one price. The extension's background script and the Android bridge only pass these messages along; they make no network request. If the other service is not open, nothing is loaded for this: it just says so. The route points do reach the other service, which is your own account there. Your answer is remembered in the page's local storage and can be changed in the panel.
+If you say yes, once, the page also gets the price of the same route from the other service. A page never calls the other service itself. It hands the route points (latitude and longitude only) to the page of the other service, in the other browser tab or the other tab of the Android app, which asks its own API with its own session and hands back one price. The extension's background script and the Android bridge only pass these messages along; they make no network request. If the other service is not open, nothing is loaded and nothing is sent for this: it just says so. The iPhone userscript has no way to reach another tab, so it never asks the other service. The route points do reach the other service, which is your own account there. Your answer is remembered in the page's local storage and can be changed in the panel.
 
 ## What it stores on your device
 
