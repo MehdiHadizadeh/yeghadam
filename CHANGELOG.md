@@ -2,7 +2,7 @@
 
 Notable changes per release. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.5.0] - 2026-11-19
 
 ### Added
 - A userscript build (`yeghadam-x.y.z.user.js`) for Safari on iPhone through the Userscripts app, no App Store listing needed. It runs the same page script; the two-service price comparison is off because a single page cannot reach the other service's tab.
