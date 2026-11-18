@@ -6,7 +6,7 @@ Yeghadam runs inside the Snapp and Tapsi web apps with the rider's own session, 
 
 Use GitHub's private reporting: [Report a vulnerability](../../security/advisories/new). Please do not open a public issue for it.
 
-Include what you found, how to reproduce it, and which version (Android app or extension) you tested. You will get an answer within a week.
+Include what you found, how to reproduce it, and which version (Android app, extension or userscript) you tested. You will get an answer within a week.
 
 ## What counts
 

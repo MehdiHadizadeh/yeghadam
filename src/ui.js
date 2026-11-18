@@ -14,6 +14,8 @@
 
   const C = window.YeghadamCore;
   const NATIVE = window.YeghadamNative || null;
+  // Set by the userscript build: a single page has no way to reach the other service's tab, so the price comparison is off.
+  const NO_PEER = window.YeghadamNoPeer === true;
   const NAME = TAPSI ? 'تپسی' : 'اسنپ';
   const PRICE_PATH = TAPSI ? '/api/v3.1/ride/preview' : '/api/v3/price';
   const TILE_URL = 'https://tile.snappmaps.ir/data/v4/';
@@ -1420,7 +1422,7 @@
   }
   function peerHTML() {
     const p = state.peer;
-    if (cat() !== CAR || !state.route || !signedIn()) return '';
+    if (NO_PEER || cat() !== CAR || !state.route || !signedIn()) return '';
     // Asking the other service uses the rider's account there, so it starts only after a yes, which is remembered.
     if (settings.peer === 'off') return `<button class="peer-off" data-a="peerOn">قیمت ${PEER_NAME} رو هم بگیر</button>`;
     if (settings.peer !== 'on') {
@@ -1538,7 +1540,7 @@
   const T = (x, y, s, size, weight, fill, anchor) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor || 'middle'}" font-family="${FONT}">${s}</text>`;
   const MAPBG = `<rect width="320" height="170" fill="#eceee6"/><g fill="#e0e3d8"><rect x="12" y="10" width="86" height="54" rx="6"/><rect x="118" y="10" width="92" height="54" rx="6"/><rect x="230" y="10" width="80" height="54" rx="6"/><rect x="12" y="96" width="86" height="66" rx="6"/><rect x="118" y="96" width="92" height="66" rx="6"/><rect x="230" y="96" width="80" height="66" rx="6"/></g><path d="M0 80H320" stroke="#fff" stroke-width="16"/><path d="M108 0V170M220 0V170" stroke="#fff" stroke-width="9"/>`;
   const SNAPPIN = (x, y) => `<path d="M${x} ${y}c-9-11-14-18-14-25a14 14 0 0 1 28 0c0 7-5 14-14 25z" fill="#15192e"/><circle cx="${x}" cy="${y - 25}" r="5" fill="#fff"/>`;
-  const GUIDE = [
+  const GUIDE_ALL = [
     { t: 'یه قدم اون‌ورتر، ارزون‌تر',
       d: `قیمت ${NAME} برای دو نقطه نزدیک به هم گاهی چند هزار تومان فرق داره. یه‌قدم نقطه‌های اطراف مبدا و مقصدت رو قیمت می‌گیره و ارزون‌ترها رو نشونت می‌ده.`,
       art: () => `${MAPBG}<path d="M72 80H172" stroke="#15192e" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="0.5 8"/><circle cx="58" cy="80" r="11" fill="#fff" stroke="#15192e" stroke-width="3.5"/><circle cx="188" cy="80" r="13" fill="#c5f04a" stroke="#15192e" stroke-width="2.5"/>
@@ -1552,7 +1554,7 @@
         <g transform="translate(14 88)"><rect width="134" height="30" rx="15" fill="#15192e"/><rect x="4" y="4" width="22" height="22" rx="6" fill="#2a3050"/><circle cx="11.3" cy="18.5" r="2.4" fill="none" stroke="#fff" stroke-width="1.2"/><circle cx="18.6" cy="12" r="4.2" fill="#c5f04a"/>${T(80, 20, 'ارزون‌ترش کن', 12, 800, '#fff')}</g>
         <circle class="pulse" cx="110" cy="103" r="16" fill="none" stroke="#c5f04a" stroke-width="3"/>` },
     { t: 'بگو تا کجا پیاده میای',
-      d: 'برای مبدا و مقصد جدا بگو: ۱۰۰، ۲۰۰ یا ۳۰۰ متر. «همین‌جا» یعنی اون سر سر جاش بمونه. بعد «پیدا کن»؛ حدود ۱۰ ثانیه طول می‌کشه.',
+      d: 'برای مبدا و مقصد جدا بگو: ۱۰۰، ۲۰۰ یا ۳۰۰ متر. «همین‌جا» یعنی اون سر سر جاش بمونه. بعد «پیدا کن».',
       art: () => {
         const row = (y, label, on) => `<text x="300" y="${y - 6}" font-size="11" font-weight="700" fill="#636982" text-anchor="end" font-family="${FONT}">${label}</text><rect x="20" y="${y}" width="280" height="34" rx="12" fill="#e6e8ee"/>`
           + [265, 195, 125, 55].map((cx, i) => (i === on ? `<rect x="${cx - 33}" y="${y + 3}" width="66" height="28" rx="9" fill="#15192e"/>` : '') + T(cx, y + 22, i ? fa([0, 100, 200, 300][i]) : 'همین‌جا', i ? 12.5 : 11.5, i === on ? 800 : 700, i === on ? '#fff' : '#3a4058')).join('');
@@ -1565,7 +1567,7 @@
         <path d="M200 80H160" stroke="#15192e" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="0.5 7"/>${SNAPPIN(200, 80)}
         <circle cx="148" cy="80" r="13" fill="#c5f04a" stroke="#15192e" stroke-width="2.5"/>${T(148, 85, fa(1), 13, 800, '#15192e')}<circle cx="246" cy="36" r="12" fill="#fff" stroke="#15192e" stroke-width="2.5"/>${T(246, 41, fa(2), 12.5, 800, '#15192e')}
         <rect x="10" y="140" width="300" height="24" rx="12" fill="#fff"/><circle cx="296" cy="152" r="5" fill="#65a30d"/>${T(287, 156, 'ارزون‌تر', 11, 700, '#3a4058', 'end')}<circle cx="196" cy="152" r="5" fill="#dc2626"/>${T(187, 156, 'گرون‌تر', 11, 700, '#3a4058', 'end')}<circle cx="100" cy="152" r="5" fill="#94a3b8"/>${T(91, 156, 'فرقی نداره', 11, 700, '#3a4058', 'end')}` },
-    { t: `قیمت ${PEER_NAME} رو هم ببین`,
+    { peer: true, t: `قیمت ${PEER_NAME} رو هم ببین`,
       d: `اگه اجازه بدی، یه‌قدم قیمت همین مسیر رو از ${PEER_NAME} هم می‌گیره و کنار قیمت ${NAME} می‌ذاره. «برو به ${PEER_NAME}» همون مسیر رو اون‌جا باز می‌کنه.`,
       // the card the panel shows: label, price, how much cheaper or dearer, and the button that opens the other service
       art: () => `<rect width="320" height="170" fill="#f2f3f7"/>
@@ -1590,6 +1592,7 @@
         <g transform="translate(62 46)"><rect x="-50" y="-15" width="100" height="28" rx="14" fill="#fff"/>${T(0, 4, 'فقط استعلام قیمت', 11, 700, '#15192e')}</g>
         <g transform="translate(258 124)"><rect x="-52" y="-15" width="104" height="28" rx="14" fill="#fff"/>${T(0, 4, 'بدون درخواست سفر', 11, 700, '#15192e')}</g>` },
   ];
+  const GUIDE = NO_PEER ? GUIDE_ALL.filter((g) => !g.peer) : GUIDE_ALL;
   function guideHTML(opening) {
     const i = state.guide, g = GUIDE[i], last = i === GUIDE.length - 1;
     const body = g.list

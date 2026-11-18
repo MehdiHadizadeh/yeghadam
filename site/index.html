@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>یه‌قدم | یه قدم اون‌ورتر، ارزون‌تر</title>
-<meta name="description" content="نقطه‌ای چند قدم اون‌طرف‌تر که اسنپ یا تپسی همون مسیر رو ارزون‌تر حساب می‌کنه. اپ اندروید و افزونه‌ی مرورگر. غیررسمی، بدون سرور، فقط قیمت می‌پرسه.">
+<meta name="description" content="نقطه‌ای چند قدم اون‌طرف‌تر که اسنپ یا تپسی همون مسیر رو ارزون‌تر حساب می‌کنه. اپ اندروید، اسکریپت Safari برای آیفون و افزونه‌ی مرورگر. غیررسمی، بدون سرور، فقط قیمت می‌پرسه.">
 <meta name="theme-color" content="#15192e">
 <meta property="og:type" content="website">
 <meta property="og:title" content="یه‌قدم | یه قدم اون‌ورتر، ارزون‌تر">
@@ -33,13 +33,15 @@
     --fg: #15192e;
     --muted: #565d75;
     --line: #d9dccf;
+    --cta-bg: #15192e;
+    --cta-fg: #ffffff;
     --font: "Vazirmatn", Tahoma, "Segoe UI", system-ui, sans-serif;
     --pad: clamp(16px, 4vw, 28px);
   }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #0f1220; --surface: #171b30; --fg: #eef0f6; --muted: #a3aac2; --line: #2a3050; --lime-ink: #c5f04a; color-scheme: dark; }
+    :root:not([data-theme="light"]) { --bg: #0f1220; --surface: #171b30; --fg: #eef0f6; --muted: #a3aac2; --line: #2a3050; --lime-ink: #c5f04a; --cta-bg: #c5f04a; --cta-fg: #15192e; color-scheme: dark; }
   }
-  :root[data-theme="dark"] { --bg: #0f1220; --surface: #171b30; --fg: #eef0f6; --muted: #a3aac2; --line: #2a3050; --lime-ink: #c5f04a; color-scheme: dark; }
+  :root[data-theme="dark"] { --bg: #0f1220; --surface: #171b30; --fg: #eef0f6; --muted: #a3aac2; --line: #2a3050; --lime-ink: #c5f04a; --cta-bg: #c5f04a; --cta-fg: #15192e; color-scheme: dark; }
 
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
@@ -109,12 +111,6 @@
   .phone img { width: 100%; height: 100%; display: block; border-radius: 24px; object-fit: cover; object-position: bottom; background: #e9ebe3; }
   .phone img.top { object-position: top; }
 
-  /* apply, per service */
-  .twin { display: grid; gap: 12px; margin-top: 36px; }
-  .twin > div { border-radius: 20px; padding: 20px 22px 22px; background: var(--surface); border: 1px solid var(--line); }
-  .twin h3 { font-size: 1.15rem; font-weight: 800; margin-bottom: 2px; }
-  .twin p { color: var(--muted); }
-
   /* trust */
   .trust { list-style: none; padding: 0; margin: 28px 0 0; display: grid; }
   .trust li { padding-block: 18px; border-top: 1px solid var(--line); display: grid; gap: 2px; }
@@ -122,14 +118,34 @@
   .trust b { font-weight: 800; font-size: 1.1rem; }
   .trust span { color: var(--muted); max-width: 56ch; }
 
-  /* install */
-  .cols { display: grid; gap: 32px; margin-top: 26px; }
-  .cols h3 { font-size: 1.2rem; font-weight: 800; margin-bottom: 10px; }
-  ol.how { margin: 0; padding-inline-start: 1.4em; }
-  ol.how li { padding-inline-start: 4px; margin-bottom: 8px; color: var(--muted); }
+  /* install: one panel per device. The hero buttons jump to a panel (:target lights it up); the download lives inside it. */
+  .platforms { display: grid; gap: 16px; margin-top: 30px; }
+  .plat { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 24px 22px 26px; display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 16px; transition: border-color .25s ease-out, box-shadow .25s ease-out; }
+  .plat:target { border-color: var(--lime-ink); box-shadow: 0 0 0 3px var(--lime); }
+  .plat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+  .plat h3 { font-size: 1.35rem; font-weight: 900; }
+  .tag { font-size: 13px; font-weight: 700; line-height: 1; padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.ok { background: var(--lime); border-color: transparent; color: var(--ink); }
+  .get { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 60px; padding: 8px 18px; border-radius: 16px; background: var(--cta-bg); color: var(--cta-fg); text-decoration: none; font-weight: 800; font-size: 16.5px; line-height: 1.3; transition: transform .18s ease-out, filter .18s ease-out; }
+  .get:hover { filter: brightness(1.12); }
+  .get:active { transform: scale(.98); }
+  .get small { font-size: 13px; font-weight: 500; opacity: .8; }
+  .get span { display: inline-flex; align-items: center; gap: 8px; }
+  .get svg { width: 19px; height: 19px; flex: none; }
+  ol.how { counter-reset: step; list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  ol.how li { counter-increment: step; position: relative; padding-inline-start: 40px; min-height: 28px; color: var(--muted); }
+  ol.how li::before { content: counter(step, persian); position: absolute; inset-inline-start: 0; top: 2px; width: 28px; height: 28px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); color: var(--fg); font-weight: 800; font-size: 14px; line-height: 26px; text-align: center; }
   ol.how li b { color: var(--fg); font-weight: 700; }
-  code { font: 500 .9em ui-monospace, Consolas, monospace; background: var(--surface); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; direction: ltr; unicode-bidi: embed; overflow-wrap: anywhere; }
-  .note { margin-top: 14px; font-size: 14.5px; color: var(--muted); max-width: 56ch; }
+  code { font: 500 .9em ui-monospace, Consolas, monospace; background: var(--bg); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; direction: ltr; unicode-bidi: embed; overflow-wrap: anywhere; }
+  .note { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); font-size: 14.5px; color: var(--muted); }
+  .more { margin-top: 22px; color: var(--muted); font-size: 15px; }
+
+  /* where the two-service comparison works */
+  .avail { list-style: none; padding: 0; margin: 26px 0 0; max-width: 72ch; }
+  .avail li { padding-block: 14px; border-top: 1px solid var(--line); display: grid; gap: 2px; }
+  .avail li:last-child { border-bottom: 1px solid var(--line); }
+  .avail b { font-weight: 800; }
+  .avail span { color: var(--muted); }
 
   /* questions */
   .faq { margin-top: 22px; }
@@ -151,8 +167,6 @@
     .hero-in { padding: 40px 36px 32px; }
     .btn { flex: 0 0 auto; }
     .steps li { grid-template-columns: minmax(0, 1fr) 210px; column-gap: 32px; align-items: center; }
-    .twin { grid-template-columns: 1fr 1fr; }
-    .cols { grid-template-columns: 1fr 1fr; gap: 40px; }
     .trust { grid-template-columns: 1fr 1fr; column-gap: 40px; }
     .trust li:nth-last-child(2) { border-bottom: 1px solid var(--line); }
   }
@@ -167,7 +181,14 @@
     .steps { grid-template-columns: repeat(3, 1fr); gap: 36px; margin-top: 44px; }
     .steps li { grid-template-columns: 1fr; grid-template-rows: 1fr auto; align-items: start; align-content: stretch; }
     .steps li > .phone { justify-self: start; }
-    .cols { gap: 64px; }
+    .platforms { grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .avail li { grid-template-columns: 9em 1fr; gap: 16px; }
+    #both, #faq { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: auto 1fr; column-gap: 64px; align-items: start; }
+    #both h2, #faq h2 { grid-column: 1; }
+    #both .lead { grid-column: 1; }
+    #both .avail, #faq .faq { grid-column: 2; grid-row: 1 / span 2; margin-top: 8px; }
+    #faq .faq { max-width: none; }
+    #faq details { max-width: none; }
     .trust { column-gap: 64px; }
   }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn, summary::after { transition: none; } }
@@ -192,13 +213,11 @@
           <h1>یه قدم اون‌ورتر،<br><em>ارزون‌تر</em></h1>
           <p class="sub">قیمت اسنپ و تپسی فقط به مسیر بستگی نداره؛ نقطه‌ی دقیق سوار و پیاده شدن هم مهمه. یه‌قدم نقطه‌های نزدیکی رو که می‌شه پیاده رفت قیمت می‌گیره و نشونت می‌ده کجا چند هزار تومن ارزون‌تره.</p>
           <div class="cta">
-            <a class="btn main" id="dl-apk" href="https://github.com/MehdiHadizadeh/yeghadam/releases/latest" rel="noopener">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
-              دانلود برای اندروید
-            </a>
-            <a class="btn alt" id="dl-zip" href="https://github.com/MehdiHadizadeh/yeghadam/releases/latest" rel="noopener">افزونه‌ی مرورگر</a>
+            <a class="btn main" href="#android"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m0 0-5-5m5 5 5-5"/></svg>نصب روی اندروید</a>
+            <a class="btn alt" href="#iphone">نصب روی آیفون</a>
+            <a class="btn alt" href="#desktop">افزونه‌ی مرورگر</a>
           </div>
-          <p class="ver" id="ver" aria-live="polite"></p>
+          <p class="ver" id="ver" aria-live="polite">رایگان و متن‌باز.</p>
           <p class="fine">برنامه‌ای غیررسمیه و به اسنپ و تپسی وابسته نیست. فقط قیمت می‌پرسه و هیچ‌وقت سفری ثبت نمی‌کنه.</p>
         </div>
 
@@ -236,7 +255,7 @@
     </div>
 
     <section id="steps">
-      <h2>سه حرکت، حدود ده ثانیه</h2>
+      <h2>چطور کار می‌کنه</h2>
       <p class="lead">مسیرت رو مثل همیشه بزن. وقتی قیمت‌ها اومدن، دکمه‌ی «ارزون‌ترش کن» بالای قیمت‌ها پیدا می‌شه.</p>
 
       <ol class="steps">
@@ -255,20 +274,21 @@
         <li>
           <div class="t"><span class="n" aria-hidden="true">۳</span>
           <h3>اعمال کن و پیاده برو</h3>
-          <p>روی «اعمال» بزن و نقطه‌ی جدید جایگزین می‌شه. بعد پیاده تا اون‌جا برو و سفر رو خودت ثبت کن.</p></div>
+          <p>روی «اعمال» بزن و نقطه‌ی جدید جایگزین می‌شه. توی اسنپ پین خودش می‌ره سر نقطه‌ی جدید (اگه تأیید نشد، روی پین بزن) و توی تپسی خود صفحه با نقطه‌ی جدید باز می‌شه. بعد پیاده تا اون‌جا برو و سفر رو خودت ثبت کن.</p></div>
           <div class="phone"><img class="top" src="img/screen-apply.png" width="390" height="844" loading="lazy" alt="اعمال پیشنهاد روی نقشه"></div>
         </li>
       </ol>
 
-      <div class="twin">
-        <div><h3>توی اسنپ</h3><p>پین خودش می‌ره سر نقطه‌ی جدید و تأیید می‌شه. اگه تأیید نشد، روی پین بزن.</p></div>
-        <div><h3>توی تپسی</h3><p>خود صفحه با نقطه‌ی جدید باز می‌شه و تأیید لازم نیست. قیمت زنده هم کنار قیمت قبلی نشون داده می‌شه.</p></div>
-      </div>
     </section>
 
     <section id="both">
       <h2>اسنپ و تپسی کنار هم</h2>
-      <p class="lead">اگه اجازه بدی، یه‌قدم قیمت همین مسیر رو از سرویس دیگه هم می‌گیره و می‌گه کدوم ارزون‌تره. «برو به تپسی» (یا اسنپ) همون مسیر رو اون‌جا باز می‌کنه. توی اپ اندروید هم دو تب «اسنپ | تپسی» بالای صفحه هست و هر کدوم صفحه‌ی خودش رو نگه می‌داره.</p>
+      <p class="lead">اگه اجازه بدی، یه‌قدم قیمت همین مسیر رو از سرویس دیگه هم می‌گیره و می‌گه کدوم ارزون‌تره. «برو به تپسی» (یا اسنپ) همون مسیر رو اون‌جا باز می‌کنه.</p>
+      <ul class="avail">
+        <li><b>اپ اندروید</b><span>دو تب «اسنپ | تپسی» بالای صفحه هست و هر کدوم صفحه‌ی خودش رو نگه می‌داره. تا سرویس دیگه رو یک بار باز نکنی، چیزی براش فرستاده نمی‌شه؛ فقط پیشنهاد باز کردنش میاد.</span></li>
+        <li><b>افزونه‌ی مرورگر</b><span>بین دو تب مرورگر کار می‌کنه. سرویس دیگه باید توی یه تب باز باشه.</span></li>
+        <li><b>آیفون (Safari)</b><span>این بخش رو نداره، چون اسکریپت به تب دیگه دسترسی نداره.</span></li>
+      </ul>
     </section>
     <section id="trust">
       <h2>خیالت راحت</h2>
@@ -282,27 +302,41 @@
 
     <section id="install">
       <h2>نصب</h2>
-      <div class="cols">
-        <div>
-          <h3>اندروید</h3>
+      <p class="lead">برای هر دستگاه یه راه هست. یه‌قدم غیررسمیه و توی هیچ فروشگاهی نیست؛ فایلش رو مستقیم از GitHub می‌گیری.</p>
+      <div class="platforms">
+        <article class="plat" id="android">
+          <div class="plat-head"><h3>اندروید</h3><span class="tag ok">اپ کامل</span></div>
+          <a class="get" id="dl-apk" href="https://github.com/MehdiHadizadeh/yeghadam/releases/latest" rel="noopener"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>دانلود APK</span><small id="sz-apk">از GitHub</small></a>
           <ol class="how">
-            <li>فایل <b>APK</b> رو از دکمه‌ی بالا دانلود کن.</li>
-            <li>بازش کن و اگه گوشی پرسید، نصب از این منبع رو اجازه بده.</li>
-            <li>اپ رو باز کن. بار اول مقدمه و اعلان «غیررسمی» رو می‌بینی؛ قبولش کن، بعد <b>اسنپ یا تپسی</b> رو انتخاب کن و با حساب خودت وارد شو.</li>
+            <li>فایل <b>APK</b> رو باز کن. اگه گوشی پرسید، نصب از این منبع رو اجازه بده.</li>
+            <li>اپ رو باز کن، مقدمه و اعلان «غیررسمی» رو بخون و قبول کن.</li>
+            <li><b>اسنپ یا تپسی</b> رو انتخاب کن و با حساب خودت وارد شو.</li>
             <li>برای عوض کردن سرویس، روی «اسنپ» یا «تپسی» بالای صفحه بزن. اپ با آخرین سرویس باز می‌شه.</li>
           </ol>
-        </div>
-        <div>
-          <h3>مرورگر کامپیوتر</h3>
+        </article>
+        <article class="plat" id="iphone">
+          <div class="plat-head"><h3>آیفون (Safari)</h3><span class="tag">Userscripts</span></div>
+          <a class="get" id="dl-js" href="https://github.com/MehdiHadizadeh/yeghadam/releases/latest" rel="noopener"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>دانلود فایل user.js</span><small id="sz-js">از GitHub</small></a>
           <ol class="how">
-            <li>فایل <b>zip افزونه</b> رو دانلود کن و از حالت فشرده دربیار.</li>
-            <li>توی Chrome یا Edge برو به <code>chrome://extensions</code> و <b>Developer mode</b> رو روشن کن.</li>
-            <li><b>Load unpacked</b> رو بزن و پوشه‌ی بازشده رو انتخاب کن.</li>
-            <li>توی سایت اسنپ یا تپسی مبدا و مقصد رو بزن و روی «ارزون‌ترش کن» کلیک کن. بعد از هر بار نصب یا به‌روزرسانی، تب‌های باز رو یک بار رفرش کن.</li>
+            <li>اپ رایگان <b>Userscripts</b> رو از App Store نصب کن.</li>
+            <li>توی تنظیمات گوشی برو به <code>Safari › Extensions</code>، Userscripts رو روشن کن و دسترسی به <code>app.snapp.taxi</code> و <code>app.tapsi.cab</code> رو بده.</li>
+            <li>اپ Userscripts رو باز کن، یه پوشه برای اسکریپت‌ها انتخاب کن و فایل <b>user.js</b> رو همون‌جا ذخیره کن.</li>
+            <li>توی Safari اسنپ یا تپسی رو باز کن، وارد شو و مسیر بزن.</li>
           </ol>
-          <p class="note">برای فایرفاکس یه zip جدا توی Releases هست، ولی هنوز امتحان نشده. فایرفاکس اندروید فقط افزونه‌ی فروشگاه خودش رو نصب می‌کنه، پس فعلاً روی موبایل نصب‌شدنی نیست.</p>
-        </div>
+          <p class="note">برنامه‌ی جدا برای آیفون نداریم. قیمت سرویس دیگه توی این نسخه نشون داده نمی‌شه.</p>
+        </article>
+        <article class="plat" id="desktop">
+          <div class="plat-head"><h3>مرورگر کامپیوتر</h3><span class="tag ok">Chrome و Edge</span></div>
+          <a class="get" id="dl-zip" href="https://github.com/MehdiHadizadeh/yeghadam/releases/latest" rel="noopener"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>دانلود zip افزونه</span><small id="sz-zip">از GitHub</small></a>
+          <ol class="how">
+            <li>فایل zip رو از حالت فشرده دربیار.</li>
+            <li>توی مرورگر برو به <code>chrome://extensions</code> و <b>Developer mode</b> رو روشن کن.</li>
+            <li><b>Load unpacked</b> رو بزن و پوشه‌ی بازشده رو انتخاب کن.</li>
+            <li>توی سایت اسنپ یا تپسی مسیر بزن و روی «ارزون‌ترش کن» کلیک کن. بعد از هر نصب یا به‌روزرسانی، تب‌های باز رو یک بار رفرش کن.</li>
+          </ol>
+        </article>
       </div>
+      <p class="more">نسخه‌های قبلی و checksum هر فایل: <a href="https://github.com/MehdiHadizadeh/yeghadam/releases" rel="noopener">Releases توی GitHub</a>.</p>
     </section>
 
     <section id="faq">
@@ -329,19 +363,24 @@
 </div>
 
 <script>
-  // Point the buttons at the newest release. Without the API the buttons still open the release page.
+  // Point the download buttons at the newest release files and show their size. Without the API they open the release page.
   (function () {
     var fa = function (s) { return String(s).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); };
     fetch('https://api.github.com/repos/MehdiHadizadeh/yeghadam/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
       .then(function (rel) {
-        var apk = rel.assets.find(function (a) { return /\.apk$/.test(a.name); });
-        var zip = rel.assets.find(function (a) { return /extension.*\.zip$/.test(a.name); });
-        if (apk) document.getElementById('dl-apk').href = apk.browser_download_url;
-        if (zip) document.getElementById('dl-zip').href = zip.browser_download_url;
+        var kb = function (a) { return fa(Math.round(a.size / 1024)) + ' کیلوبایت'; };
+        var wire = function (re, id, sz) {
+          var a = rel.assets.find(function (x) { return re.test(x.name); });
+          if (!a) return;
+          document.getElementById(id).href = a.browser_download_url;
+          document.getElementById(sz).textContent = kb(a);
+        };
+        wire(/\.apk$/, 'dl-apk', 'sz-apk');
+        wire(/\.user\.js$/, 'dl-js', 'sz-js');
+        wire(/extension-\d.*\.zip$/, 'dl-zip', 'sz-zip');
         var v = (rel.tag_name || '').replace(/^v/, '');
-        var kb = apk ? ' · ' + fa(Math.round(apk.size / 1024)) + ' کیلوبایت' : '';
-        if (v) document.getElementById('ver').textContent = 'نسخه‌ی ' + fa(v) + kb;
+        if (v) document.getElementById('ver').textContent = 'آخرین نسخه: ' + fa(v) + '. رایگان و متن‌باز.';
       })
       .catch(function () {});
   })();

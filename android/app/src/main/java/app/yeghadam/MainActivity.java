@@ -371,8 +371,8 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Ask the other service's page for its price of the route. Its WebView is created if the rider has not opened that
-     * service yet, and runs (hidden) until it answers. The page waits up to 20 seconds for its script to be ready.
+     * Ask the other service's page for its price of the route. If the rider has not opened that service yet, its WebView
+     * does not exist and the answer is "closed". Otherwise the page gets up to 20 seconds for its script to be ready.
      */
     private void askPeer(final int asker, final int id, String points) {
         final int other = 1 - asker;
