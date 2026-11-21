@@ -6,10 +6,16 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 1
+    # The workflows pin each action to a commit; Dependabot moves the pin and its version comment together.
+    # Major versions can change inputs and runtimes, so they are taken by hand.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       actions:
         patterns: ["*"]
-  # Android Gradle Plugin majors need a build migration of their own, so only minor and patch updates are proposed.
+  # Newer Android Gradle Plugin minors need a newer Gradle than the one the workflows install (8.9), and majors need a
+  # build migration, so only patch updates are proposed. Bump AGP and the workflows' gradle-version together by hand.
   - package-ecosystem: gradle
     directory: /android
     schedule:
@@ -17,7 +23,7 @@ updates:
     open-pull-requests-limit: 1
     ignore:
       - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       gradle:
         patterns: ["*"]

@@ -93,6 +93,26 @@ public class MainActivity extends Activity {
         return index == 1 ? HOME_TAPSI : HOME_SNAPP;
     }
 
+    /** Whether url is an https address on the same host as home. */
+    private static boolean onHost(String url, String home) {
+        if (url == null) return false;
+        Uri u = Uri.parse(url);
+        return "https".equals(u.getScheme()) && Uri.parse(home).getHost().equals(u.getHost());
+    }
+
+    private static boolean isServiceOrigin(String url) {
+        return onHost(url, HOME_SNAPP) || onHost(url, HOME_TAPSI);
+    }
+
+    /**
+     * Whether a service's WebView is on that service's own site. A link can take the WebView to another site, which then
+     * sees the same bridge, so the calls that reach the other service check this first. Call on the UI thread.
+     */
+    private boolean onServicePage(int index) {
+        WebView w = webs[index];
+        return w != null && onHost(w.getUrl(), homeUrl(index));
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -171,6 +191,26 @@ public class MainActivity extends Activity {
             tabs[i] = t;
         }
         bar.addView(seg, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // Settings, reachable at any time: opens the same settings view the panel's gear shows, in the open service.
+        ImageView gear = new ImageView(this);
+        gear.setImageResource(R.drawable.ic_settings);
+        gear.setScaleType(ImageView.ScaleType.CENTER);
+        gear.setContentDescription(getString(R.string.settings));
+        gear.setClickable(true);
+        GradientDrawable gearBg = new GradientDrawable();
+        gearBg.setColor(0xFFF2F3F7);
+        gearBg.setCornerRadius(dp(14));
+        gear.setBackground(gearBg);
+        gear.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (web != null) web.evaluateJavascript("window.__yeghadamPrefs&&window.__yeghadamPrefs()", null);
+            }
+        });
+        LinearLayout.LayoutParams gearLp = new LinearLayout.LayoutParams(dp(42), dp(42));
+        gearLp.setMarginStart(dp(8));
+        bar.addView(gear, gearLp);
         styleTabs(-1);
         return bar;
     }
@@ -261,6 +301,11 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return true; // the page never navigates away
             }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                return rendererGone();
+            }
         });
         root.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         startView = v;
@@ -333,7 +378,17 @@ public class MainActivity extends Activity {
 
 
     private static boolean isSharedFlag(String name) {
-        return "seenIntro".equals(name) || "seenGuide".equals(name) || "peer".equals(name);
+        return "seenIntro".equals(name) || "seenGuide".equals(name) || "peer".equals(name)
+                || "auto".equals(name) || "depth".equals(name) || "budgets".equals(name);
+    }
+
+    /** Only the values the page script writes for each shared flag; "" clears it. */
+    private static boolean validFlag(String name, String value) {
+        if (value.isEmpty()) return true;
+        if ("peer".equals(name)) return "on".equals(value) || "off".equals(value);
+        if ("depth".equals(name)) return "quick".equals(value) || "full".equals(value);
+        if ("budgets".equals(name)) return value.matches("(0|100|200|300):(0|100|200|300)");
+        return "1".equals(value);
     }
 
     /** Accepts only 2 to 6 numeric lat/lng pairs and rebuilds them, so no page text is ever run as a script. */
@@ -378,12 +433,20 @@ public class MainActivity extends Activity {
         final int other = 1 - asker;
         // The other service is never loaded just to ask its price: until the rider has opened it (and signed in), the
         // answer is "not open", and the card offers to open it.
-        if (webs[other] == null) {
+        // A tab that is on another site is treated as closed: the route must not reach a page that is not the service.
+        if (webs[other] == null || !onServicePage(other)) {
             deliverPeer(asker, id, "{\"status\":\"closed\"}");
             return;
         }
-        WebView target = webs[other];
+        final WebView target = webs[other];
         target.onResume();
+        // peerResult pauses it again; if no answer comes (the page navigated away), pause it anyway after a minute
+        ui.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (target != web && webs[other] == target) target.onPause();
+            }
+        }, 60000);
         String js = "(async function(){var n=0;while(!window.__yeghadamPeerQuote&&n<40){await new Promise(function(r){setTimeout(r,500)});n++}"
                 + "var a={status:'closed'};"
                 + "if(window.__yeghadamPeerQuote){try{a=await window.__yeghadamPeerQuote(" + points + ")}catch(e){a={status:'none'}}}"
@@ -421,7 +484,7 @@ public class MainActivity extends Activity {
 
     private void deliverPeer(int asker, int id, String cleanJson) {
         WebView w = webs[asker];
-        if (w == null) return;
+        if (w == null || !onServicePage(asker)) return;
         w.evaluateJavascript("window.__yeghadamPeerDone&&window.__yeghadamPeerDone(" + id + "," + JSONObject.quote(cleanJson) + ")", null);
     }
 
@@ -561,7 +624,8 @@ public class MainActivity extends Activity {
         }
         splash = null;
         splashFill = null;
-        if (!introOpen) styleSystemBars(); // the first-run intro is navy too: keep the bars until it closes
+        // the first-run intro and the first-run page are navy too: keep the bars until they close (hideStart restyles)
+        if (!introOpen && startView == null) styleSystemBars();
         s.animate().alpha(0f).setDuration(260).withEndAction(new Runnable() {
             @Override
             public void run() {
@@ -606,18 +670,20 @@ public class MainActivity extends Activity {
                     || host.equals("t.me")
                     || host.endsWith("instagram.com");
             if (!external) return false;
-            launch(new Intent(Intent.ACTION_VIEW, uri));
+            launch(browsable(new Intent(Intent.ACTION_VIEW, uri)));
             return true;
         }
         if (scheme.equals("intent")) {
             try {
-                Intent i = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME);
-                i.addCategory(Intent.CATEGORY_BROWSABLE);
-                i.setComponent(null);
-                i.setSelector(null);
+                Intent i = browsable(Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME));
                 if (!launch(i)) {
+                    // Only a web page may stand in for a missing app. A javascript:, data: or file: fallback would run in
+                    // the page that is open now (the rider's Snapp or Tapsi session), so it is never loaded.
                     String fallback = i.getStringExtra("browser_fallback_url");
-                    if (fallback != null) view.loadUrl(fallback);
+                    if (fallback != null) {
+                        String s = Uri.parse(fallback).getScheme();
+                        if ("https".equalsIgnoreCase(s) || "http".equalsIgnoreCase(s)) view.loadUrl(fallback);
+                    }
                 }
             } catch (Exception e) {
                 // ignore malformed intent URIs
@@ -628,8 +694,16 @@ public class MainActivity extends Activity {
             return false;
         }
         // tel:, sms:, mailto:, geo:, market:, snapp:, ...
-        launch(new Intent(Intent.ACTION_VIEW, uri));
+        launch(browsable(new Intent(Intent.ACTION_VIEW, uri)));
         return true;
+    }
+
+    /** Like a browser: only apps that accept links from the web, never a named component. */
+    private static Intent browsable(Intent i) {
+        i.addCategory(Intent.CATEGORY_BROWSABLE);
+        i.setComponent(null);
+        i.setSelector(null);
+        return i;
     }
 
     private boolean launch(Intent i) {
@@ -648,6 +722,12 @@ public class MainActivity extends Activity {
     private class Client extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            // A frame inside the page (an ad, a widget) may not open other apps or replace the page unless the rider
+            // tapped it. Web links in frames load in the frame as usual.
+            if (!request.isForMainFrame() && !request.hasGesture()) {
+                String scheme = request.getUrl().getScheme();
+                if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) return true;
+            }
             return openExternally(view, request.getUrl());
         }
 
@@ -667,7 +747,7 @@ public class MainActivity extends Activity {
             super.onPageFinished(view, url);
             inject(view);
             String route = pendingRoute;
-            if (route != null && Integer.valueOf(0).equals(view.getTag())) {
+            if (route != null && Integer.valueOf(0).equals(view.getTag()) && onHost(url, HOME_SNAPP)) {
                 pendingRoute = null;
                 view.evaluateJavascript("(async function(){var n=0;while(!window.__yeghadamStartRoute&&n<40){await new Promise(function(r){setTimeout(r,500)});n++}"
                         + "if(window.__yeghadamStartRoute)window.__yeghadamStartRoute(" + route + ")})()", null);
@@ -684,7 +764,7 @@ public class MainActivity extends Activity {
                         + "<style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;margin:0;color:#15192e;text-align:center;padding:0 24px;line-height:1.7}"
                         + "h3{margin:0 0 4px}div{color:#3a4058}"
                         + "a{margin-top:20px;background:#15192e;color:#fff;padding:12px 28px;border-radius:14px;text-decoration:none;font-weight:bold}</style></head>"
-                        + "<body><h3>اتصال برقرار نشد</h3><div>اینترنت یا فیلترشکن را بررسی کن و دوباره امتحان کن.</div>"
+                        + "<body><h3>اتصال برقرار نشد</h3><div>اینترنت یا فیلترشکنت رو بررسی کن و دوباره امتحان کن.</div>"
                         + "<a href='" + home + "'>تلاش دوباره</a></body></html>";
                 view.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
                 hideSplash();
@@ -693,9 +773,20 @@ public class MainActivity extends Activity {
 
         @Override
         public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
-            recreate();
-            return true;
+            return rendererGone();
         }
+    }
+
+    private long lastRendererGone;
+
+    /** The page's renderer died (often low memory). Start over once; if it dies again right away, close instead of looping. */
+    private boolean rendererGone() {
+        long now = SystemClock.uptimeMillis();
+        boolean again = lastRendererGone != 0 && now - lastRendererGone < 30000;
+        lastRendererGone = now;
+        if (again) finish();
+        else recreate();
+        return true;
     }
 
     private class Chrome extends WebChromeClient {
@@ -707,8 +798,18 @@ public class MainActivity extends Activity {
 
         @Override
         public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+            // The location is for the two services' own pages, never for another site that ends up in the WebView.
+            if (!isServiceOrigin(origin)) {
+                callback.invoke(origin, false, false);
+                return;
+            }
             if (hasLocationPermission()) {
                 callback.invoke(origin, true, false);
+                return;
+            }
+            // one system dialog at a time: the other tab is answered no instead of silently dropping the first callback
+            if (pendingGeoCallback != null) {
+                callback.invoke(origin, false, false);
                 return;
             }
             pendingGeoOrigin = origin;
@@ -754,6 +855,7 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
+                    if (!onServicePage(index)) return;
                     if (points == null) deliverPeer(index, id, "{\"status\":\"none\"}");
                     else askPeer(index, id, points);
                 }
@@ -767,7 +869,7 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    openPeer(index, points);
+                    if (onServicePage(index)) openPeer(index, points);
                 }
             });
         }
@@ -781,7 +883,7 @@ public class MainActivity extends Activity {
                 public void run() {
                     // the answering WebView is this one; the asker is the other service
                     if (webs[index] != null && webs[index] != web) webs[index].onPause();
-                    deliverPeer(1 - index, id, clean);
+                    if (onServicePage(index)) deliverPeer(1 - index, id, clean);
                 }
             });
         }
@@ -795,7 +897,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void setFlag(String name, String value) {
-            if (!isSharedFlag(name) || value == null || value.length() > 8) return;
+            if (!isSharedFlag(name) || value == null || !validFlag(name, value)) return;
             getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putString("flag_" + name, value).apply();
         }
 
@@ -807,6 +909,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void setConsent(int version) {
+            if (version != NOTICE_VERSION) return; // only the notice this build shows can be accepted
             getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putInt("consent", version).apply();
         }
 
@@ -816,7 +919,7 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    finishAndRemoveTask();
+                    if (onServicePage(index)) finishAndRemoveTask();
                 }
             });
         }
@@ -827,6 +930,7 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
+                    if (!onServicePage(index)) return;
                     introOpen = open;
                     if (switchBox != null) switchBox.setVisibility(open ? View.GONE : View.VISIBLE);
                     if (splash != null) return; // the splash keeps navy bars and restyles them when it hides
@@ -844,9 +948,11 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void toast(final String text) {
+            if (text == null || text.isEmpty() || text.length() > 200) return; // a null text crashes Toast.show() on Android 11+
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
+                    if (!onServicePage(index)) return;
                     Toast.makeText(MainActivity.this, text, Toast.LENGTH_SHORT).show();
                 }
             });
@@ -878,6 +984,12 @@ public class MainActivity extends Activity {
             return;
         }
         final WebView current = web;
+        // the offline page (about:blank) has nothing behind it but the failed load: leave instead of retrying it
+        String url = current.getUrl();
+        if (url == null || url.startsWith("about:")) {
+            finish();
+            return;
+        }
         current.evaluateJavascript("(window.__yeghadamBack && window.__yeghadamBack()) ? 1 : 0", new android.webkit.ValueCallback<String>() {
             @Override
             public void onReceiveValue(String handled) {
@@ -915,6 +1027,11 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        ui.removeCallbacksAndMessages(null);
+        if (startView != null) {
+            startView.destroy();
+            startView = null;
+        }
         for (int i = 0; i < 2; i++) {
             if (webs[i] != null) {
                 webs[i].destroy();

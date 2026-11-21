@@ -139,7 +139,8 @@
       const lines = [];
       let line = null, x = 0, y = 0, i = 0;
       while (i < geom.length) {
-        const c = geom[i++], cmd = c & 7, cnt = c >>> 3;
+        // a damaged tile may claim more points than it carries: never read past the coordinates that are there
+        const c = geom[i++], cmd = c & 7, cnt = Math.min(c >>> 3, (geom.length - i) >> 1);
         if (cmd === 7) continue;
         for (let k = 0; k < cnt; k++) {
           x += zigzag(geom[i++]); y += zigzag(geom[i++]);
@@ -563,6 +564,18 @@
     return `مبدا تا ${fa(o)} و مقصد تا ${fa(d)} متر`;
   }
 
+  /* ---------------- request limits ---------------- */
+  // Milliseconds until one more action fits every [span ms, max count] rule, given the times of earlier actions; 0 when
+  // it fits now.
+  function limitWait(times, rules, now) {
+    let wait = 0;
+    for (const [span, max] of rules) {
+      const recent = (times || []).filter((t) => now - t < span).sort((a, b) => a - b);
+      if (recent.length >= max) wait = Math.max(wait, recent[recent.length - max] + span - now);
+    }
+    return wait;
+  }
+
   /* ---------------- search ---------------- */
   class SearchError extends Error { constructor(code) { super(code); this.code = code; } }
   const priceOf = (c, sid) => (c && c.prices && c.prices[sid]) || Infinity;
@@ -779,7 +792,7 @@
   return {
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
     pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
-    normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText,
+    normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
     search, cards, priceOf,
     bestOf, normalizeFa, SearchError,
   };

@@ -123,7 +123,8 @@ h1 em{font-style:normal;color:var(--lime)}
     current = id;
     order.forEach(function (k) { document.getElementById(k).classList.toggle('on', k === id); });
   }
-  function call(name, arg) { try { if (N[name]) return N[name](arg); } catch (e) {} }
+  // The app's bridge matches methods by argument count: a call with an extra undefined argument finds nothing.
+  function call(name, arg) { try { if (N[name]) return arg === undefined ? N[name]() : N[name](arg); } catch (e) {} }
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-a]');
     if (!t) return;

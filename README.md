@@ -53,6 +53,7 @@
 - **مقایسه‌ی دو سرویس.** با اجازه‌ی خودت، قیمت همین مسیر در سرویس دیگر کنار قیمت فعلی می‌آید و می‌گوید چقدر ارزان‌تر یا گران‌تر است. هر صفحه فقط با سرویس خودش حرف می‌زند؛ جواب سرویس دیگر را صفحه‌ی خودش می‌دهد، با حساب خودت.
 - **عوض کردن سرویس بدون دردسر.** در اپ اندروید دو تب «اسنپ | تپسی» بالای صفحه است و هر کدام صفحه‌ی خودش را نگه می‌دارد. «برو به تپسی/اسنپ» مسیر را همراه می‌برد.
 - **قفل قیمت (اسنپ):** اسنپ هر قیمت را چند دقیقه ثابت نگه می‌دارد. یه‌قدم این را تشخیص می‌دهد و می‌گوید جابه‌جا شدن به نفعت هست یا نه.
+- **تنظیمات:** فاصله‌ی پیش‌فرض پیاده‌روی، عمق جستجو (سریع یا کامل)، جستجوی خودکار وقتی مسیر را تأیید کردی، و قیمت سرویس دیگر. از چرخ‌دنده‌ی بالای پنل، چرخ‌دنده‌ی کنار سوییچ اپ اندروید، یا با نگه داشتن دکمه‌ی یه‌قدم باز می‌شود.
 
 ## نصب
 
@@ -115,7 +116,7 @@ src/ui.js          page layer: route tracking, map overlay, panel, guided apply,
 scripts/build.js   bundles both into dist/extension/ and the Android assets
 extension/         extension manifest, icons, relay.js (content script) and background.js (routes messages between the two services' tabs)
 android/           Android app (Java, no AndroidX); assets/start.html is the local first-run page (intro, notice, choice of service)
-test/              unit tests for the core
+test/              unit tests: the core, the page layer's price requests and limits, the extension's background script
 brand/             logo source image (drawn by scripts/make-icons.py)
 docs/images/       README images
 ```
