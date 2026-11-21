@@ -4,7 +4,9 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
-## [2.6.0] - 2026-11-21
+## [2.6.1] - 2026-11-21
+
+The first release of these changes. The v2.6.0 tag was never published: its release run stopped at the new signing check, whose pattern did not match the way apksigner prints the certificate.
 
 ### Added
 - A settings view behind the gear button in the panel header: walking distance per end, search depth (quick: up to 15 quotes, full: up to 25), automatic search when a route is confirmed, and the other service's price on or off. Automatic search waits until the route holds still and stays within the per-account limits. Settings open at any time, also before a route is set: from the panel's gear, from a gear next to the service switch in the Android app, or by holding (right-clicking) the pill. In the Android app the settings are shared by Snapp and Tapsi. Automatic searches leave room for two searches started by hand under the limits.
@@ -141,8 +143,8 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 First public release.
 
-[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.6.0...HEAD
-[2.6.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.0
+[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.6.1...HEAD
+[2.6.1]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.1
 [2.5.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.5.0
 [2.4.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.4.0
 [2.3.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.3.0
