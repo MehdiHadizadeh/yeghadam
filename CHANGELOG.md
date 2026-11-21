@@ -4,6 +4,9 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+- The README and the project page link to the Telegram channel [@yeghadam_app](https://t.me/yeghadam_app), which carries every release file and news of each version, for riders who cannot download from GitHub.
+
 ## [2.6.1] - 2026-11-21
 
 The first release of these changes. The v2.6.0 tag was never published: its release run stopped at the new signing check, whose pattern did not match the way apksigner prints the certificate.
