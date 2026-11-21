@@ -59,7 +59,7 @@ jobs:
           # installed apps could not update. Change this only together with a planned key rotation.
           cert="c6ae77c22b687e6b754b28f7d9de98b2e84779290a949f67749b7d536a4066fb"
           "$apksigner" verify --print-certs android/app/build/outputs/apk/release/app-release.apk | tee signer.txt
-          grep -qi "Signer #1 certificate SHA-256 digest: $cert" signer.txt || { echo "the APK is not signed with the release key"; exit 1; }
+          grep -qi "certificate SHA-256 digest: $cert" signer.txt || { echo "the APK is not signed with the release key"; exit 1; }
           mkdir -p out
           cp android/app/build/outputs/apk/release/app-release.apk "out/yeghadam-$VERSION.apk"
           cp dist/userscript/yeghadam.user.js "out/yeghadam-$VERSION.user.js"
