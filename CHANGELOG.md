@@ -2,6 +2,50 @@
 
 Notable changes per release. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [2.6.0] - 2026-11-21
+
+### Added
+- A settings view behind the gear button in the panel header: walking distance per end, search depth (quick: up to 15 quotes, full: up to 25), automatic search when a route is confirmed, and the other service's price on or off. Automatic search waits until the route holds still and stays within the per-account limits. Settings open at any time, also before a route is set: from the panel's gear, from a gear next to the service switch in the Android app, or by holding (right-clicking) the pill. In the Android app the settings are shared by Snapp and Tapsi. Automatic searches leave room for two searches started by hand under the limits.
+
+### Security
+- The Android app never loads a `javascript:`, `data:` or `file:` fallback address from an `intent:` link. Only a web page can stand in for a missing app, so a link can no longer run code inside the open Snapp or Tapsi page.
+- The Android app shares the device location only with the Snapp and Tapsi pages, not with another site opened inside it.
+- In the Android app, the price comparison and "open the other service" work only while each tab is on its own service's site. A page reached through a link can no longer use them or receive the route.
+- A page answers the other service's price question at most 20 times in 10 minutes and 60 times an hour, so the comparison cannot be used to send unlimited quotes from the rider's account.
+- The extension's background script hands back only a known status and a price from the other tab, as the Android app already did, and rejects empty or non-numeric route points.
+- The automatic tap that confirms Snapp's pin is skipped when the map's centre is under Snapp's ride sheet or on a control that requests, cancels or pays for a ride. The rider is asked to tap the pin instead.
+- The notice can only be accepted for the version the app shows, the shared flags only take the values the script writes, and closing the app, hiding the tab bar or showing a toast only work from the service's own site.
+- A frame inside the page can no longer open other apps or replace the page through an `intent:` link unless the rider tapped it, and links only open apps that accept links from the web.
+- On Android 12 and later, no app data (including the Snapp and Tapsi sessions) is included in backups or moved to a new phone.
+- The release workflow fails unless the APK is signed with the release key, the keystore file is removed even when the build fails, and every GitHub Action is pinned to a commit.
+
+### Fixed
+- A price request that gets no answer gives up after 15 seconds instead of hanging the search (also in old Android WebViews), and the stop button no longer waits for it.
+- No connection or repeated server errors are reported as a connection problem. Before, they read as the service limiting the account and blocked new searches for five minutes.
+- Applying a suggestion for the last destination of a route with a stop presses Snapp's own confirm button for the second destination when the page shows it.
+- A damaged map tile can no longer make the street decoder build a line of millions of points.
+- Android first run: accepting or declining the notice on the first-run page now reaches the app. Before, the answer was lost, so the notice was shown again inside the service and "no, thanks" did nothing.
+- Android: the system bars stay navy while the first-run page is open, and the app no longer crashes when a page asks for an empty toast.
+- A long press on a touch screen asks for one price, not two.
+- The numbered badges on Snapp's map come back after Snapp rebuilds its map.
+- On Android, a late answer from the other service after a page reload can no longer be shown for a different route.
+- The stop button no longer waits out a retry pause after a failed request.
+- In the extension, a route carried from Tapsi to a Snapp tab that loads slowly is no longer lost when the browser stops the idle background script.
+- Carrying a route with a stop to Snapp presses the "second destination" control itself, not a box around it.
+- The automatic pin tap is no longer skipped on screens where Snapp's ride sheet could not be found.
+- Android: Back on the offline page closes the app instead of retrying the failed page, a crashing page renderer no longer reloads in a loop, and a second location request while the system dialog is open no longer leaves the first page waiting.
+
+### Changed
+- The pill's accessible name is the status it shows (for example the saving), not a fixed "open" label.
+- The apply and dismiss buttons on the result cards are taller and easier to hit.
+- A result card is no longer a button holding other buttons: its first row is the button that shows the point on the map, so screen readers reach show, dismiss and apply separately.
+- The project page tells Firefox users where to get their build.
+- The guide opens the first time the service's map is up and the rider is signed in, before the first search, instead of only after "ارزون‌ترش کن" is pressed. Leaving the price page no longer closes it.
+- The guide's picture of the price comparison card reads in the right order and no longer overlaps.
+- Clearer wording for a lost connection, a route with no price, a long press too far from the route and how long a search takes.
+
 ## [2.5.0] - 2026-11-19
 
 ### Added
@@ -97,6 +141,10 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 First public release.
 
+[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.0
+[2.5.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.5.0
+[2.4.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.4.0
 [2.3.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.3.0
 [2.2.1]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.2.1
 [2.2.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.2.0

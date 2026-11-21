@@ -23,6 +23,7 @@
       "run_at": "document_start"
     }
   ],
+  "permissions": ["storage"],
   "host_permissions": ["https://app.snapp.taxi/*", "https://app.tapsi.cab/*"],
   "background": {
     "service_worker": "background.js"

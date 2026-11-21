@@ -5,4 +5,5 @@
     <string name="splash_unofficial">برنامه غیررسمی؛ ربطی به اسنپ و تپسی نداره</string>
     <string name="service_snapp">اسنپ</string>
     <string name="service_tapsi">تپسی</string>
+    <string name="settings">تنظیمات</string>
 </resources>

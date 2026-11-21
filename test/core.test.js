@@ -159,6 +159,28 @@ test('decodeTile reads line features and properties', () => {
   assert.deepEqual([tt.x, tt.y], [t.x, t.y]);
 });
 
+test('decodeTile caps a command count at the coordinates actually present', () => {
+  // A LineTo claiming about a million points but carrying one: a damaged tile must not turn into a huge line.
+  const feat = [];
+  field(3, 0, feat); varint(2, feat);
+  packedField(4, [9, zz(10), zz(10), 2 + 2 ** 20 * 8, zz(5), zz(5)], feat);
+  const layer = [];
+  bytesField(1, str('transportation'), layer);
+  bytesField(2, feat, layer);
+  const tile = []; bytesField(3, layer, tile);
+  const out = C.decodeTile(new Uint8Array(tile), { z: 14, x: 10532, y: 6458 });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].lines[0].length, 2);
+});
+
+test('decodeTile ends on a truncated buffer instead of looping', () => {
+  const layer = [];
+  bytesField(1, str('transportation'), layer);
+  const tile = []; bytesField(3, layer, tile);
+  tile[1] += 40; // the layer claims more bytes than the buffer has
+  assert.doesNotThrow(() => C.decodeTile(new Uint8Array(tile), { z: 14, x: 0, y: 0 }));
+});
+
 test('tilesAround covers neighbours near a tile edge', () => {
   const t = C.tileOf(center.lng, center.lat, 14);
   const list = C.tilesAround(center, 300);
@@ -406,4 +428,19 @@ test('parseTapsiPrices labels an unknown service in Persian', () => {
   const json = { data: { tabs: [{ key: 'CAR', title: 'ماشین', items: [{ service: { key: 'SOME_NEW_SERVICE', isAvailable: true, defaultPriceStep: 0, prices: [{ passengerShare: 100000 }] } }] }] } };
   const q = C.parseTapsiPrices(json, 1);
   assert.deepEqual(Object.values(q.names), ['سرویس دیگر']);
+});
+
+test('limitWait: allowed under every rule, else the time until the oldest action in the full window expires', () => {
+  const min = 60e3, rules = [[10 * min, 5], [60 * min, 15]];
+  const now = 100 * min;
+  assert.equal(C.limitWait([], rules, now), 0);
+  assert.equal(C.limitWait([now - min, now - 2 * min, now - 3 * min, now - 4 * min], rules, now), 0);
+  // five in the last 10 minutes: wait until the oldest of them is 10 minutes old
+  const five = [1, 2, 3, 4, 9].map((m) => now - m * min);
+  assert.equal(C.limitWait(five, rules, now), min);
+  // fifteen in the hour but spread out: the hourly rule decides
+  const hour = Array.from({ length: 15 }, (_, i) => now - (11 + i * 3) * min);
+  assert.equal(C.limitWait(hour, rules, now), (60 - 53) * min);
+  // times older than the span do not count, and the input order does not matter
+  assert.equal(C.limitWait(five.reverse().concat([now - 70 * min]), [[10 * min, 6]], now), 0);
 });

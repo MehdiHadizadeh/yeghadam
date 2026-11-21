@@ -36,15 +36,37 @@
   const cat = () => (settings.category === BIKE && bikeOffered() ? BIKE : CAR);
 
   const nativeFetch = window.fetch.bind(window);
-  const defaults = { budgets: { origin: 200, dest: 200 }, category: CAR, services: {}, seenGuide: false, peer: null };
-  const SHARED = ['seenIntro', 'seenGuide', 'peer']; // see pullShared
+  // How many quotes one search may spend. `quick` is for riders who want an answer sooner, or want to spend fewer of
+  // their account's quotes; `full` is the default plan. `secs` is the range the panel quotes for one search.
+  const DEPTH = {
+    quick: { max: 15, both: 5, one: 10, secs: [6, 12], label: 'سریع' },
+    full: { max: 25, both: 8, one: 12, secs: [10, 20], label: 'کامل' },
+  };
+  const depth = () => DEPTH[settings.depth] || DEPTH.full;
+  const defaults = { budgets: { origin: 200, dest: 200 }, category: CAR, services: {}, seenGuide: false, peer: null, auto: false, depth: 'full' };
+  // Settings the Android app keeps for both services (see pullShared), each with how it is written as a short string.
+  const flag = { get: (v) => v === '1', put: (v) => (v ? '1' : '') };
+  const SHARED = {
+    seenIntro: flag, seenGuide: flag, auto: flag,
+    peer: { get: (v) => v, put: (v) => v || '' },
+    depth: { get: (v) => v, put: (v) => v || '' },
+    budgets: { // "origin:dest" in meters, e.g. "100:300"
+      get: (v) => { const m = /^(\d+):(\d+)$/.exec(v); return m ? { origin: +m[1], dest: +m[2] } : undefined; },
+      put: (b) => (b ? b.origin + ':' + b.dest : ''),
+    },
+  };
   let settings = Object.assign({}, defaults, safeJSON(lsGet(SETTINGS_KEY)) || {});
-  if (settings.category !== CAR && settings.category !== BIKE) settings.category = CAR;
-  if (!settings.services || typeof settings.services !== 'object') settings.services = {};
-  settings.budgets = C.normalizeBudgets(settings, BUDGETS);
   pullShared();
-  if (settings.peer !== 'on' && settings.peer !== 'off') settings.peer = null; // asked once, then remembered
   if (NATIVE && NATIVE.getFlag) pushShared(); // an install that only had local values hands them to the app
+  // Anything stored, here or in the app, that this version does not know falls back to the default.
+  function checkSettings() {
+    if (settings.category !== CAR && settings.category !== BIKE) settings.category = CAR;
+    if (!DEPTH[settings.depth]) settings.depth = 'full';
+    settings.auto = settings.auto === true;
+    if (!settings.services || typeof settings.services !== 'object') settings.services = {};
+    settings.budgets = C.normalizeBudgets(settings, BUDGETS);
+    if (settings.peer !== 'on' && settings.peer !== 'off') settings.peer = null; // asked once, then remembered
+  }
 
   const state = {
     route: TAPSI ? null : carRoute(safeJSON(ssGet(ROUTE_KEY))), // { points, category, t }
@@ -58,6 +80,7 @@
     error: null,
     sheet: false,
     setup: true,        // show the walking-distance chips in the sheet
+    prefs: false,       // the settings view replaces the panel body
     probe: null,        // long-press quote: { kind, lat, lng, walk, dir, prices, base, approx }
     apply: null,        // { steps: [{ kind, c }], i, phase: 'fly'|'confirm'|'manual' }
     applied: null,
@@ -83,22 +106,24 @@
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
   function safeJSON(s) { try { return JSON.parse(s); } catch (e) { return null; } }
-  // The first-run intro, the guide and the answer about the other service's price belong to the rider, not to one service:
-  // on Android the app keeps them, so Snapp and Tapsi do not each ask again. Elsewhere each site keeps its own.
+  // The first-run intro, the guide, the answer about the other service's price and the settings belong to the rider,
+  // not to one service: on Android the app keeps them, so Snapp and Tapsi share them. Elsewhere each site keeps its own.
   function pullShared() {
-    if (!NATIVE || !NATIVE.getFlag) return;
-    for (const k of SHARED) {
-      let v = '';
-      try { v = String(NATIVE.getFlag(k) || ''); } catch (e) {}
-      if (v === '') continue; // nothing stored in the app yet: keep what this site had
-      settings[k] = k === 'peer' ? v : v === '1';
+    if (NATIVE && NATIVE.getFlag) {
+      for (const k of Object.keys(SHARED)) {
+        let v = '';
+        try { v = String(NATIVE.getFlag(k) || ''); } catch (e) {}
+        if (v === '') continue; // nothing stored in the app yet: keep what this site had
+        const val = SHARED[k].get(v);
+        if (val !== undefined) settings[k] = val;
+      }
     }
+    checkSettings();
   }
   function pushShared() {
     if (!NATIVE || !NATIVE.setFlag) return;
-    for (const k of SHARED) {
-      const v = settings[k];
-      try { NATIVE.setFlag(k, k === 'peer' ? (v || '') : v ? '1' : ''); } catch (e) {}
+    for (const k of Object.keys(SHARED)) {
+      try { NATIVE.setFlag(k, SHARED[k].put(settings[k])); } catch (e) {}
     }
   }
   function saveSettings() {
@@ -137,7 +162,7 @@
   window.fetch = function (input, init) {
     let route = null;
     try {
-      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const url = typeof input === 'string' ? input : input ? String(input.url || input.href || input) : ''; // string, Request or URL
       if (isPriceUrl(url) && init && typeof init.body === 'string') route = onSnappRequest(init.body);
       else if (TAPSI && url.includes('/actionlog/send') && init && typeof init.body === 'string') noteTapsiVersion(init.body);
     } catch (e) {}
@@ -151,7 +176,12 @@
     try {
       if (this.__yeghadamUrl && isPriceUrl(this.__yeghadamUrl) && typeof body === 'string') {
         const route = onSnappRequest(body);
-        if (route) this.addEventListener('loadend', () => onSnappResponse(route, safeJSON(this.responseText)));
+        // once per send; responseText throws for a 'json' responseType, so read `response` then
+        if (route) this.addEventListener('loadend', () => {
+          let json = null;
+          try { json = this.responseType === 'json' ? this.response : safeJSON(this.responseText); } catch (e) {}
+          onSnappResponse(route, json);
+        }, { once: true });
       }
     } catch (e) {}
     return xSend.apply(this, arguments);
@@ -217,12 +247,30 @@
     if (state.apply) { advanceApply(route); emit(); return; }
     const key = routeKey(route);
     if (state.resultKey && key !== state.resultKey) {
-      if (state.running) state.cancel = true;
+      if (state.running) cancelSearch();
       state.result = null; state.resultKey = ''; state.selected = null; state.error = null;
       state.probe = null; state.applied = null; state.setup = true;
       drawMap();
     }
+    if (settings.auto && key !== state.resultKey) autoRun(key);
     emit();
+  }
+  // Auto search: a newly confirmed route is searched on its own once it has held still for a moment, so a pin that is
+  // still being moved does not spend quotes. It never runs past the per-account limits; when they say wait, the rider
+  // still gets the usual button.
+  let autoTimer = 0;
+  const AUTO_LIMITS = [[10 * 60e3, 3], [60 * 60e3, 13]]; // LIMITS.search minus two
+  function autoRun(key) {
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => {
+      if (!settings.auto || !state.route || routeKey(state.route) !== key || state.resultKey === key) return;
+      if (state.running || state.apply || state.intro != null || state.guide != null || state.off || !signedIn()) return;
+      if (state.probe && state.probe.loading) return;
+      // automatic searches leave room under the limits for at least two searches the rider starts by hand
+      if (waitFor('search') || C.limitWait(usage().search, AUTO_LIMITS, Date.now())) return;
+      state.sheet = true;
+      startRun();
+    }, 1200);
   }
 
   /* ---------------- Snapp's map (mapbox-gl v1) ---------------- */
@@ -235,7 +283,7 @@
       if (typeof orig !== 'function') continue;
       P[k] = function () {
         if (state.map !== this) {
-          try { if (this.getContainer && document.contains(this.getContainer())) { state.map = this; onMapFound(this); } } catch (e) {}
+          try { if (this.getContainer && document.contains(this.getContainer())) { badgeSig = ''; clearBadges(); state.map = this; onMapFound(this); } } catch (e) {}
         }
         return orig.apply(this, arguments);
       };
@@ -254,7 +302,7 @@
       const scan = (o, d) => {
         if (!o || typeof o !== 'object' || d > 4 || seen.has(o)) return null;
         seen.add(o);
-        if (isMap(o)) return o;
+        try { if (isMap(o)) return o; } catch (e) { return null; } // an exotic object (revoked Proxy) must not stop the scan
         let keys;
         try { keys = Object.keys(o).slice(0, 40); } catch (e) { return null; }
         for (const k of keys) {
@@ -269,8 +317,9 @@
       while (f && n++ < 60) {
         const m = scan(f.memoizedProps, 0) || scan(f.memoizedState, 0);
         // the context holds a react-map-gl style handle; getMap() returns the MapLibre Map itself
-        const real = m && (typeof m.getMap === 'function' ? m.getMap() : m);
-        if (real && real.getContainer() === el) return real;
+        let real = null;
+        try { real = m && (typeof m.getMap === 'function' ? m.getMap() : m); if (real && real.getContainer() !== el) real = null; } catch (e) { real = null; }
+        if (real) return real;
         f = f.return;
       }
       return null;
@@ -341,23 +390,46 @@
   const signedIn = () => (TAPSI ? lsGet('isSignedIn') === 'true' : !!authHeader());
   // `category` defaults to the user's pick. A quote asked for by the other service's page (see askPeer) is always a car
   // quote and is not part of a search, so it ignores the search's cancel flag.
+  // Each attempt gets QUOTE_MS: on a slow or filtered network a request can stall with no answer at all, and a search
+  // must still end (and "stop" must still work) instead of waiting on it.
+  const QUOTE_MS = 15000;
+  // A retry pause that a stopped search does not have to sit out.
+  async function pause(ms, standalone) {
+    for (let left = ms; left > 0 && (standalone || !state.cancel); left -= 100) await sleep(Math.min(100, left));
+  }
   async function quote(points, category, standalone) {
     const catId = category || cat();
     const body = JSON.stringify(TAPSI ? C.tapsiPriceBody(points) : C.priceBody(points, catId));
+    let limited = false; // the service answered 429 at least once
     for (let attempt = 0; attempt < 4; attempt++) {
       if (!standalone && state.cancel) throw new C.SearchError('cancel');
       const auth = TAPSI ? null : authHeader();
       if (!TAPSI && !auth) throw new C.SearchError('auth');
       const headers = TAPSI ? { 'content-type': 'application/json', 'x-agent': tapsiAgent() } : { 'content-type': 'application/json', authorization: auth };
-      let r;
+      // AbortController is missing in old Android WebViews (before Chrome 66); the race below still ends the wait there.
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      let timer = 0;
+      const late = new Promise((_, reject) => { timer = setTimeout(() => { if (ctl) ctl.abort(); reject(new Error('timeout')); }, QUOTE_MS); });
+      if (!standalone) state.abort = ctl; // cancelSearch() aborts the request in flight
+      let r, text;
       try {
-        r = await nativeFetch(TAPSI ? 'https://api.tapsi.cab' + PRICE_PATH : PRICE_PATH, { method: 'POST', credentials: 'include', headers, body });
-      } catch (e) { await sleep(1500 * (attempt + 1)); continue; }
+        const init = { method: 'POST', credentials: 'include', headers, body };
+        if (ctl) init.signal = ctl.signal;
+        r = await Promise.race([nativeFetch(TAPSI ? 'https://api.tapsi.cab' + PRICE_PATH : PRICE_PATH, init), late]);
+        if (r.ok) text = await Promise.race([r.text(), late]);
+      } catch (e) {
+        if (!standalone && state.cancel) throw new C.SearchError('cancel');
+        await pause(1500 * (attempt + 1), standalone);
+        continue;
+      } finally {
+        clearTimeout(timer);
+        if (state.abort === ctl) state.abort = null;
+      }
       if (r.status === 401 || r.status === 403) throw new C.SearchError('auth');
       if (r.status === 400) throw new C.SearchError('unavailable'); // e.g. no motorbikes on this route, or a point the service refuses
-      if (r.status === 429) { await sleep(3000 * (attempt + 1)); continue; }
-      if (!r.ok) { await sleep(1000 * (attempt + 1)); continue; }
-      const json = await r.json().catch(() => null);
+      if (r.status === 429) { limited = true; await pause(3000 * (attempt + 1), standalone); continue; }
+      if (!r.ok) { await pause(1000 * (attempt + 1), standalone); continue; }
+      const json = safeJSON(text);
       if (TAPSI) {
         if (!json || !json.data || !Array.isArray(json.data.tabs)) throw new C.SearchError('changed');
         const q = C.parseTapsiPrices(json, catId);
@@ -367,8 +439,15 @@
       if (!json || !json.data || !Array.isArray(json.data.services)) throw new C.SearchError('changed');
       return C.parsePrices(json);
     }
-    noteUsage('cool');
-    throw new C.SearchError('rate');
+    // Only a 429 means the service is limiting this account, and only then do new searches pause for a while. No answer
+    // or server errors on every attempt is a connection problem, not a reason to lock the rider out.
+    if (limited) { noteUsage('cool'); throw new C.SearchError('rate'); }
+    throw new C.SearchError('network');
+  }
+  // Stops the running search, including the price request it is waiting on.
+  function cancelSearch() {
+    state.cancel = true;
+    if (state.abort) state.abort.abort();
   }
 
   /* ---------------- the other service's price ---------------- */
@@ -377,9 +456,13 @@
   // service, which quotes it with its own session and hands the price back. No token or cookie leaves its page.
   const PEER_NAME = TAPSI ? 'اسنپ' : 'تپسی';
   const peerWait = {};
-  let peerSeq = 0;
+  // ids start at a random point per page load: on Android a late answer for a page that has since reloaded must not
+  // resolve the new page's question with the same id (kept within a Java int)
+  let peerSeq = Math.floor(Math.random() * 1e9);
+  // a coordinate given as a number or a numeric string: null, '' and true would otherwise pass as 0 or 1
+  const coord = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '') ? +v : NaN);
   const validPoints = (pts) => Array.isArray(pts) && pts.length >= 2 && pts.length <= 6
-    && pts.every((p) => p && isFinite(+p.lat) && isFinite(+p.lng) && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180);
+    && pts.every((p) => p && isFinite(coord(p.lat)) && isFinite(coord(p.lng)) && Math.abs(+p.lat) <= 90 && Math.abs(+p.lng) <= 180);
   function askPeer(points) {
     return new Promise((resolve) => {
       const id = ++peerSeq;
@@ -396,6 +479,9 @@
   async function answerPeer(points) {
     if (!validPoints(points)) return { status: 'none' };
     if (!signedIn()) return { status: 'auth' };
+    // Any script that reaches the shell can ask this question, so these quotes have a cap of their own on this account.
+    if (waitFor('peer')) return { status: 'none' };
+    noteUsage('peer');
     try {
       const q = await quote(points.map((p) => ({ lat: +p.lat, lng: +p.lng })), CAR, true);
       const ids = Object.keys(q.prices);
@@ -438,7 +524,11 @@
   }
   document.addEventListener('visibilitychange', repeerOnReturn);
   window.addEventListener('focus', repeerOnReturn);
-  window.__yeghadamFocus = repeerOnReturn; // Android: the app calls this when it brings this service's tab forward
+  // Android: the app calls this when it brings this service's tab forward. Settings may have changed in the other tab.
+  window.__yeghadamFocus = () => {
+    if (NATIVE && NATIVE.getFlag) { pullShared(); emit(); }
+    repeerOnReturn();
+  };
 
   /* ---------------- a route carried over from the other service ---------------- */
   // Snapp keeps no route in its URL. On its start page the pin is the centre of the map and a confirm button (first for the
@@ -454,11 +544,18 @@
     return t.includes('تایید ' + SECOND);
   }) || null;
   // The control that adds Snapp's second destination: a short, visible, clickable label that is not a map marker.
-  const addSecondControl = () => [...document.querySelectorAll('button,[role="button"],a,div,span')].find((e) => {
-    if (e.closest('.mapboxgl-marker') || !e.getClientRects().length || e.children.length > 3) return false;
-    const t = C.normalizeFa(e.textContent);
-    return t.length < 40 && t.includes(SECOND) && !t.includes('تایید');
-  }) || null;
+  // querySelectorAll lists outer elements first; the last match is the deepest, so its click bubbles through every wrapper
+  // up to whichever element Snapp listens on. A real control (button, link) wins over a plain wrapper.
+  const addSecondControl = () => {
+    const found = [...document.querySelectorAll('button,[role="button"],a,div,span')].filter((e) => {
+      if (e.closest('.mapboxgl-marker') || !e.getClientRects().length || e.children.length > 3) return false;
+      const t = C.normalizeFa(e.textContent);
+      return t.length < 40 && t.includes(SECOND) && !t.includes('تایید') && !RIDE_ACTION.test(t);
+    });
+    const controls = found.filter((e) => e.matches('button,[role="button"],a'));
+    const list = controls.length ? controls : found;
+    return list.length ? list[list.length - 1] : null;
+  };
   function startCarry(points) {
     if (TAPSI || !validPoints(points)) return;
     // Snapp takes at most two destinations: with more stops keep the first and the last
@@ -558,9 +655,11 @@
   /* ---------------- account safety ---------------- */
   // Every search sends up to 25 quotes from the user's own account. Keep the pace well below anything that looks
   // automated: a few searches per 10 minutes, a cap per hour, single-point quotes counted separately, and a pause
-  // after the server answers 429.
+  // after the server answers 429. `peer` counts the quotes this page makes when the other service's page asks for its price.
   const USAGE_KEY = 'yeghadam:usage';
-  const LIMITS = { search: [[10 * 60e3, 5], [60 * 60e3, 15]], probe: [[10 * 60e3, 20]], cool: [[5 * 60e3, 1]] };
+  const LIMITS = {
+    search: [[10 * 60e3, 5], [60 * 60e3, 15]], probe: [[10 * 60e3, 20]], peer: [[10 * 60e3, 20], [60 * 60e3, 60]], cool: [[5 * 60e3, 1]],
+  };
   function usage() {
     const u = safeJSON(lsGet(USAGE_KEY)) || {};
     const now = Date.now();
@@ -575,16 +674,7 @@
   // minutes to wait before another `kind` action, 0 when allowed
   function waitFor(kind) {
     const u = usage(), now = Date.now();
-    let wait = 0;
-    const check = (k) => {
-      for (const [span, max] of LIMITS[k]) {
-        const recent = u[k].filter((t) => now - t < span).sort((a, b) => a - b);
-        if (recent.length >= max) wait = Math.max(wait, recent[recent.length - max] + span - now);
-      }
-    };
-    check('cool');
-    check(kind);
-    return Math.ceil(wait / 60e3);
+    return Math.ceil(Math.max(C.limitWait(u.cool, LIMITS.cool, now), C.limitWait(u[kind], LIMITS[kind], now)) / 60e3);
   }
 
   /* ---------------- search ---------------- */
@@ -602,6 +692,8 @@
     const res = await C.search({
       route: { points: state.route.points, category: cat() },
       budgets: settings.budgets,
+      maxRequests: depth().max,
+      perEnd: settings.budgets.origin && settings.budgets.dest ? depth().both : depth().one,
       serviceId: settings.services[cat()] || undefined,
       quote, getFeatures,
       delay: TAPSI ? 500 : undefined, // Tapsi's limits are unknown: go slower than the Snapp pace
@@ -644,10 +736,12 @@
   // Long press / right click: quote one point as the origin or the destination, whichever is nearer.
   async function probeAt(ll) {
     if (!ll || !state.route || state.running || state.apply || state.intro != null || state.off) return;
+    // a long press also fires the map's contextmenu on touch screens: one press, one quote
+    if (state.probe && state.probe.loading) return;
     const pts = state.route.points, O = pts[0], D = pts[pts.length - 1];
     const p = { lat: ll.lat, lng: ll.lng };
     const dO = C.distance(p, O), dD = C.distance(p, D);
-    if (Math.min(dO, dD) > 600) { notify('نزدیک مبدا یا مقصد نگه دار.'); return; }
+    if (Math.min(dO, dD) > 600) { notify(`یه نقطه تا ${fa(600)} متری مبدا یا مقصد انتخاب کن.`); return; }
     const wait = waitFor('probe');
     if (wait) { notify(`برای امنیت حسابت، ${fa(wait)} دقیقه دیگه دوباره امتحان کن.`); return; }
     noteUsage('probe');
@@ -830,7 +924,7 @@
   function applyTapsi(c) {
     const pts = state.route.points.slice();
     for (const s of stepsFor(c)) pts[s.kind === 'origin' ? 0 : pts.length - 1] = { lat: s.c.lat, lng: s.c.lng };
-    if (state.running) state.cancel = true; // the route changes here, so the search for the old one is moot
+    if (state.running) cancelSearch(); // the route changes here, so the search for the old one is moot
     history.pushState(history.state, '', location.pathname + '?' + C.tapsiRouteSearch(location.search, pts));
     window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
     state.resultKey = routeKey({ points: pts, category: CAR }); // the result now describes the applied route; keep showing it
@@ -879,14 +973,25 @@
     setTimeout(() => { if (state.apply === a && a.phase === 'confirm' && a.i === step) { a.hint = true; emit(); positionTapHint(); } }, 3500);
     setTimeout(() => {
       if (state.apply !== a || a.i !== step) return;
-      const btn = confirmButton(a.steps[step].kind === 'origin' ? 0 : 1);
+      // the last point of a route with a stop is Snapp's second destination, which has a confirm button of its own
+      const btn = a.steps[step].kind === 'origin' ? confirmButton(0) : (multiStop() && confirmButton(2)) || confirmButton(1);
       if (btn) { btn.click(); return; }
       try {
         const m = state.map, c = m.getCenter(), pt = m.project([c.lng, c.lat]), rect = m.getContainer().getBoundingClientRect();
-        const el = document.elementFromPoint(rect.left + pt.x, rect.top + pt.y);
-        if (el && el !== host && !host.contains(el)) tap(el);
+        const x = rect.left + pt.x, y = rect.top + pt.y, el = document.elementFromPoint(x, y);
+        if (pinTappable(el, y)) tap(el);
       } catch (e) { /* the manual guide stays */ }
     }, 500);
+  }
+  // The fallback confirm taps whatever sits at the map's centre, which should be Snapp's pin. Whatever the page shows
+  // there, that tap must never land on our own UI, on Snapp's ride sheet, or on a control that requests, cancels or pays
+  // for a ride. When in doubt it does nothing and the rider is asked to tap the pin.
+  const RIDE_ACTION = /درخواست|لغو|پرداخت/;
+  function pinTappable(el, y) {
+    if (!el || el === host || host.contains(el)) return false;
+    if (sheetSeen && y >= lastSheet) return false;
+    const control = el.closest('button,a,[role="button"]');
+    return !control || !RIDE_ACTION.test(C.normalizeFa(control.textContent));
   }
   function advanceApply(route) {
     const a = state.apply, s = a.steps[a.i];
@@ -918,9 +1023,10 @@
   }
   const TAG = { nearest: 'نزدیک‌ترین', balanced: 'متعادل', cheapest: 'ارزون‌ترین', best: 'بهترین' };
   const ERR = {
-    auth: `وارد حساب ${NAME} نیستی یا نشستت تموم شده. یک بار خارج شو و دوباره وارد شو.`,
+    auth: `وارد حساب ${NAME} نیستی یا نشستت تموم شده. یه بار خارج شو و دوباره وارد شو.`,
     rate: `${NAME} موقتاً استعلام‌ها رو محدود کرده. چند دقیقه بعد دوباره امتحان کن.`,
-    noprice: 'برای این مسیر قیمتی برنگشت.',
+    network: `${NAME} جواب نداد. اینترنت یا فیلترشکنت رو بررسی کن و دوباره امتحان کن.`,
+    noprice: 'برای این مسیر قیمتی برنگشت. چند لحظه بعد دوباره امتحان کن.',
     budget: 'تعداد استعلام‌های مجاز این جستجو تموم شد.',
     nothing: 'یکی از مبدا یا مقصد رو باید بگردی.',
     unavailable: `${NAME} این سرویس رو برای این مسیر نداره.`,
@@ -951,6 +1057,7 @@
     down: svgIcon('<path d="m6 9 6 6 6-6"/>'),
     help: svgIcon('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'),
     close: svgIcon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+    gear: svgIcon('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
     next: svgIcon('<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>'),
     prev: svgIcon('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>'),
     again: svgIcon('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'),
@@ -1069,7 +1176,7 @@
   .card{display:block;width:100%;margin-top:8px;padding:11px 12px 10px;border-radius:16px;background:var(--soft);border:1.5px solid transparent;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .2s}
   .card:hover{background:var(--soft2)}
   .card.sel{background:#fff;border-color:var(--ink);box-shadow:0 8px 18px -10px rgba(15,18,40,.35)}
-  .c1{display:flex;align-items:center;gap:10px}
+  .c1{display:flex;align-items:center;gap:10px;width:100%;border-radius:10px}
   .n{width:26px;height:26px;flex:none;display:grid;place-items:center;border-radius:50%;border:2px solid var(--ink);background:#fff;font-size:13px;font-weight:800;line-height:1}
   .card.sel .n{background:var(--lime)}
   .sv{flex:1;min-width:0;font-size:16.5px;font-weight:800;color:var(--leaf);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1084,15 +1191,29 @@
   .c3{display:flex;align-items:center;gap:6px;margin-top:9px;padding-top:9px;border-top:1px solid rgba(15,18,40,.07)}
   .meta{flex:1;min-width:0;font-size:12.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .meta b{color:var(--ink);font-weight:700}
-  .go{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:0 12px;border-radius:10px;font-size:13px;font-weight:800;background:var(--ink);color:#fff;flex:none;white-space:nowrap}
+  .go{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 12px;border-radius:10px;font-size:13px;font-weight:800;background:var(--ink);color:#fff;flex:none;white-space:nowrap}
   .go svg{width:14px;height:14px;color:var(--lime)}
-  .nb{min-height:34px;padding:0 10px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--mute);flex:none;white-space:nowrap}
+  .nb{min-height:40px;padding:0 10px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--mute);flex:none;white-space:nowrap}
   .nb:hover{background:rgba(15,18,40,.06);color:var(--ink)}
   .foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
   .tb{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 10px;margin-inline-start:-10px;border-radius:10px;font-size:13px;font-weight:800;color:var(--ink)}
   .tb:hover{background:var(--soft)}
   .tb svg{width:16px;height:16px}
   .foot .fine{margin:0;flex:1}
+  .ptitle{font-size:16px;font-weight:800;margin:2px 0 -4px}
+  .psec{font-size:14px;font-weight:800;color:var(--ink);margin:18px 0 0;padding-top:12px;border-top:1px solid var(--line)}
+  .ptitle + .psec{border-top:0;padding-top:0;margin-top:12px}
+  .pnote{margin-top:4px}
+  .fine + .prow{margin-top:10px;border-top:1px solid var(--line)} /* the switches start after the defaults, with a rule instead of a title */
+  .prow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .prow .pl{flex:1;min-width:0}
+  .prow .pl b{display:block;font-size:14px;font-weight:800}
+  .prow .pl small{display:block;margin-top:2px;font-size:12px;line-height:1.6;color:var(--mute)}
+  .tg{position:relative;width:46px;height:28px;flex:none;border-radius:14px;background:var(--soft2);transition:background .15s}
+  .tg i{position:absolute;top:3px;inset-inline-start:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(15,18,40,.3);transition:inset-inline-start .15s}
+  .tg.on{background:var(--ink)}
+  .tg.on i{inset-inline-start:21px}
+  .ic.on{background:var(--soft)}
   .run{display:flex;align-items:center;gap:10px;padding:6px 0 2px}
   .run b{font-size:14px}
   .run small{display:block;font-size:12px;color:var(--mute)}
@@ -1221,7 +1342,7 @@
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
   `;
 
-  let host, root, view, lastHTML = '', wasGuide = false;
+  let host, root, view, lastHTML = '', wasGuide = false, pillHeld = false;
   function mount() {
     if (host || !document.body) return;
     host = document.createElement('div');
@@ -1236,13 +1357,26 @@
     root.addEventListener('click', onClick);
     layout();
     root.addEventListener('keydown', (e) => {
-      if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('card')) { e.preventDefault(); e.target.click(); }
       if (state.guide == null) return;
       if (e.key === 'Escape') closeGuide();
       else if (e.key === 'ArrowLeft') guideGo(1); // right to left: forward is to the left
       else if (e.key === 'ArrowRight') guideGo(-1);
     });
     // swipe between guide steps
+    // hold the pill (touch) or right-click it (mouse) for the settings; the click that ends the hold is not an "open"
+    let pillTimer = 0;
+    root.addEventListener('touchstart', (e) => {
+      clearTimeout(pillTimer);
+      pillHeld = false;
+      if (!(e.target.closest && e.target.closest('.pill'))) return;
+      pillTimer = setTimeout(() => { pillHeld = true; openPrefs(); }, 600);
+    }, { passive: true });
+    for (const ev of ['touchend', 'touchmove', 'touchcancel']) root.addEventListener(ev, () => clearTimeout(pillTimer), { passive: true });
+    root.addEventListener('contextmenu', (e) => {
+      if (!(e.target.closest && e.target.closest('.pill'))) return;
+      e.preventDefault();
+      openPrefs();
+    });
     let sx = null, sy = null;
     root.addEventListener('touchstart', (e) => {
       const t = e.touches.length === 1 ? e.touches[0] : null;
@@ -1263,21 +1397,25 @@
   const emit = () => { try { render(); } catch (e) { console.error('[yeghadam]', e); } };
 
   // Top edge of Snapp's bottom sheet: the outermost full-width box under the bottom of the screen that starts below
-  // the top fifth of it. Falls back to half the screen.
+  // the top fifth of it. 0 when there is none, -1 when our own panel is in the way.
   function sheetTop() {
     const w = window.innerWidth, h = window.innerHeight;
     let top = 0;
     for (let el = document.elementFromPoint(w / 2, h - 4); el && el !== document.body; el = el.parentElement) {
-      if (el === host) return lastSheet || h / 2;
+      if (el === host) return -1; // our own panel covers the bottom: keep the last measure
       const r = el.getBoundingClientRect();
       if (r.width >= w * 0.9 && r.top >= h * 0.2 && r.top < h - 60 && (!top || r.top < top)) top = r.top;
     }
-    return top || h / 2;
+    return top;
   }
-  let lastSheet = 0;
+  // lastSheet: the top edge used for layout (half the screen when no sheet was found); sheetSeen: a sheet was really found
+  let lastSheet = 0, sheetSeen = false;
   function layout() {
     if (!host) return;
-    const t = Math.round(sheetTop());
+    const found = Math.round(sheetTop());
+    if (found < 0) return;
+    sheetSeen = found > 0;
+    const t = found || Math.round(window.innerHeight / 2);
     if (Math.abs(t - lastSheet) < 2) return;
     lastSheet = t;
     host.style.setProperty('--sheet', t + 'px');
@@ -1358,7 +1496,8 @@
     if (state.apply || state.probe || !signedIn() || !onPricePage()) return '';
     const s = status();
     if (!s) return '';
-    return `<button class="pill ${s.cls}" data-a="open" aria-label="باز کردن یه‌قدم">${s.spin ? '<span class="spin"></span>' : LOGO}<span>${s.html || esc(s.text)}</span></button>`;
+    // no aria-label: the status on the button is its name, so a screen reader hears the saving, not just "open"
+    return `<button class="pill ${s.cls}" data-a="open">${s.spin ? '<span class="spin"></span>' : LOGO}<span>${s.html || esc(s.text)}</span></button>`;
   }
 
   function serviceSwitch(prices, names) {
@@ -1372,11 +1511,32 @@
     const cats = offered.length > 1 ? `<div class="seg sm" role="group" aria-label="نوع سفر">${offered.map((c) => `<button class="${cat() === c.id ? 'on' : ''}" data-a="cat" data-k="${c.id}" aria-pressed="${cat() === c.id}">${esc(c.name)}</button>`).join('')}</div>` : '';
     const sw = cat() === CAR && state.snapp ? serviceSwitch(state.snapp.prices, state.snapp.names) : '';
     const pick = cats || sw ? `<div class="lbl">مقایسه با</div>${cats}${sw}` : '';
-    const row = (end, label) => `<div class="brow"><span${multiStop() ? ' style="min-width:58px"' : ''}>${label}</span><div class="seg" role="group" aria-label="فاصله پیاده‌روی از ${label}">${[0].concat(BUDGETS).map((b) => `<button class="${settings.budgets[end] === b ? 'on' : ''}" data-a="budget" data-k="${end}:${b}" aria-pressed="${settings.budgets[end] === b}"${b ? '' : ` aria-label="${label} همین‌جا بمونه"`}>${b ? fa(b) + ' متر' : 'همین‌جا'}</button>`).join('')}</div></div>`;
     return `<div class="lbl">تا کجا حاضری پیاده بری؟</div>
-      ${row('origin', 'مبدا')}${row('dest', endName('dest'))}${multiStop() ? `<div class="fine">${ICON.info}<span>مسیرت مقصد دوم هم داره. فقط مبدا و مقصد آخر جابه‌جا می‌شن، توقف وسط سر جاشه.</span></div>` : ''}
+      ${budgetRows()}
       ${pick}
-      <div class="fine">${ICON.shield}<span>حدود ${fa(10)} ثانیه طول می‌کشه. فقط قیمت می‌پرسه؛ سفری ثبت نمی‌شه.</span></div>`;
+      <div class="fine">${ICON.shield}<span>${secsText()} طول می‌کشه. فقط قیمت می‌پرسه؛ سفری ثبت نمی‌شه.</span></div>`;
+  }
+  const secsText = () => `${fa(depth().secs[0])} تا ${fa(depth().secs[1])} ثانیه`;
+  // The walking-distance rows, shared by the search setup and the settings view.
+  function budgetRows() {
+    const row = (end, label) => `<div class="brow"><span${multiStop() ? ' style="min-width:58px"' : ''}>${label}</span><div class="seg" role="group" aria-label="فاصله پیاده‌روی از ${label}">${[0].concat(BUDGETS).map((b) => `<button class="${settings.budgets[end] === b ? 'on' : ''}" data-a="budget" data-k="${end}:${b}" aria-pressed="${settings.budgets[end] === b}"${b ? '' : ` aria-label="${label} همین‌جا بمونه"`}>${b ? fa(b) + ' متر' : 'همین‌جا'}</button>`).join('')}</div></div>`;
+    return `${row('origin', 'مبدا')}${row('dest', endName('dest'))}${multiStop() ? `<div class="fine">${ICON.info}<span>مسیرت مقصد دوم هم داره. فقط مبدا و مقصد آخر جابه‌جا می‌شن، توقف وسط سر جاشه.</span></div>` : ''}`;
+  }
+  // Settings: everything a rider may want to change outside a search, in one place.
+  function prefsHTML() {
+    const sw = (a, on, label, sub) => `<div class="prow"><div class="pl"><b id="pl-${a}">${label}</b>${sub ? `<small>${sub}</small>` : ''}</div>
+      <button class="tg${on ? ' on' : ''}" data-a="${a}" role="switch" aria-checked="${on}" aria-labelledby="pl-${a}"><i></i></button></div>`;
+    const d = depth();
+    // These are what every search starts with; the chips before "find" change the same values, so say so plainly.
+    let h = `<div class="psec">پیش‌فرض هر جستجو</div>
+      <div class="fine pnote">${ICON.info}<span>هر جستجو با همین‌ها شروع می‌شه. قبل از «پیدا کن» هم می‌تونی عوضشون کنی.</span></div>
+      <div class="lbl">تا کجا حاضری پیاده بری؟</div>${budgetRows()}`;
+    h += `<div class="lbl">عمق جستجو</div><div class="seg" role="group" aria-label="عمق جستجو">${Object.keys(DEPTH).map((k) => `<button class="${settings.depth === k ? 'on' : ''}" data-a="depth" data-k="${k}" aria-pressed="${settings.depth === k}">${DEPTH[k].label}</button>`).join('')}</div>
+      <div class="fine">${ICON.clock}<span>تا ${fa(d.max)} استعلام، حدود ${secsText()}. ${settings.depth === 'quick' ? 'نقطه‌های کمتری بررسی می‌شه.' : 'بیشترین شانس برای قیمت ارزون‌تر.'}</span></div>`;
+    h += sw('auto', settings.auto, 'جستجوی خودکار', 'وقتی مسیر رو تأیید کردی، خودش می‌گرده.');
+    if (!NO_PEER) h += sw('peerSet', settings.peer === 'on', `قیمت ${PEER_NAME} هم بیاد`, `با حساب خودت توی ${PEER_NAME} قیمت همین مسیر رو می‌پرسه.`);
+    h += `<div class="fine">${ICON.shield}<span>برای امنیت حسابت، تعداد جستجوها در هر ساعت محدوده؛ جستجوی خودکار هم همین محدودیت رو داره.</span></div>`;
+    return h;
   }
   const runButton = () => `<button class="btn" data-a="run" ${state.route ? '' : 'disabled'}>پیدا کن${ICON.next}</button>`;
 
@@ -1387,8 +1547,9 @@
   }
   function cardHTML(k, i) {
     const c = k.c, sel = c === state.selected ? ' sel' : '';
-    return `<div class="card${sel}" data-a="pick" data-k="${esc(c.id)}" role="button" tabindex="0" aria-label="پیشنهاد ${fa(i + 1)}">
-      <div class="c1"><span class="n">${fa(i + 1)}</span><span class="sv"><span>${toman(k.saving)} ارزون‌تر</span></span><span class="wk">${ICON.walk}${fa(c.walk)} متر</span></div>
+    // the card is a group; its first row is the button that shows the point on the map, next to dismiss and apply
+    return `<div class="card${sel}" data-a="pick" data-k="${esc(c.id)}" role="group" aria-label="پیشنهاد ${fa(i + 1)}">
+      <button class="c1" data-a="pick" data-k="${esc(c.id)}" aria-pressed="${c === state.selected}"><span class="n">${fa(i + 1)}</span><span class="sv"><span>${toman(k.saving)} ارزون‌تر</span></span><span class="wk">${ICON.walk}${fa(c.walk)} متر</span></button>
       <div class="c2">${KIND_ICON[c.kind]}<span class="pl"><b>${KIND(c.kind)}:</b> ${esc(placeShort(c))}</span><span class="tag">${TAG[k.tag]}</span></div>
       <div class="c3"><span class="meta"><b>${toman(k.price)}</b></span>
         <button class="nb" data-a="dismiss" data-k="${esc(c.id)}" title="این پیشنهاد رو نشون نده">نمی‌رم</button><button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال${ICON.next}</button></div>
@@ -1437,7 +1598,7 @@
     const card = (cls, main, aside) => `<div class="peer${cls}"><div class="pm">${main}</div>${aside || ''}</div>`;
     if (p.status === 'loading') return card('', `${head('<span class="spin"></span>')}<div class="ps">در حال گرفتن قیمت…</div>`);
     if (p.status === 'auth') return card('', `${head()}<div class="ps">وارد حساب ${PEER_NAME} نیستی. وارد شو تا قیمتش رو ببینی.</div>`, go);
-    if (p.status === 'closed' && p.why === 'unreachable') return card('', `${head()}<div class="ps">${PEER_NAME} باز است ولی جواب نمی‌دهد. اون تب رو یک بار رفرش کن. ${again}</div>`);
+    if (p.status === 'closed' && p.why === 'unreachable') return card('', `${head()}<div class="ps">${PEER_NAME} بازه ولی جواب نمی‌ده. اون تب رو یه بار رفرش کن. ${again}</div>`);
     if (p.status === 'closed') return card('', `${head()}<div class="ps">${PEER_NAME} باز نیست. ${again}</div>`, go);
     if (p.status !== 'ok') return card('', `${head()}<div class="ps">قیمتی برنگشت. ${again}</div>`, go);
     const own = ownCarPrice(), diff = own ? own - p.price : 0;
@@ -1537,6 +1698,8 @@
 
   /* ---------------- guide ---------------- */
   // Seven short steps, each drawn with the same parts the rider will see: Snapp's map, our pill, panel and cards.
+  // Persian text that starts at x and runs leftwards, kept in reading order even when it mixes words and digits
+  const RT = (x, y, s, size, weight, fill) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" direction="rtl" unicode-bidi="embed" text-anchor="start" font-family="${FONT}">${s}</text>`;
   const T = (x, y, s, size, weight, fill, anchor) => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor || 'middle'}" font-family="${FONT}">${s}</text>`;
   const MAPBG = `<rect width="320" height="170" fill="#eceee6"/><g fill="#e0e3d8"><rect x="12" y="10" width="86" height="54" rx="6"/><rect x="118" y="10" width="92" height="54" rx="6"/><rect x="230" y="10" width="80" height="54" rx="6"/><rect x="12" y="96" width="86" height="66" rx="6"/><rect x="118" y="96" width="92" height="66" rx="6"/><rect x="230" y="96" width="80" height="66" rx="6"/></g><path d="M0 80H320" stroke="#fff" stroke-width="16"/><path d="M108 0V170M220 0V170" stroke="#fff" stroke-width="9"/>`;
   const SNAPPIN = (x, y) => `<path d="M${x} ${y}c-9-11-14-18-14-25a14 14 0 0 1 28 0c0 7-5 14-14 25z" fill="#15192e"/><circle cx="${x}" cy="${y - 25}" r="5" fill="#fff"/>`;
@@ -1572,10 +1735,10 @@
       // the card the panel shows: label, price, how much cheaper or dearer, and the button that opens the other service
       art: () => `<rect width="320" height="170" fill="#f2f3f7"/>
         <rect x="16" y="40" width="288" height="90" rx="16" fill="#f6fbe4" stroke="#c5f04a" stroke-width="2"/>
-        ${T(292, 66, PEER_NAME + '، همین مسیر', 12, 700, '#636982', 'end')}
-        ${T(292, 98, toman(1820000), 19, 800, '#15192e', 'end')}
-        <rect x="158" y="82" width="64" height="24" rx="12" fill="#c5f04a"/>${T(190, 98.5, fa(37000) + ' ارزون‌تر', 10.5, 800, '#15192e')}
-        <rect x="30" y="62" width="104" height="44" rx="13" fill="#15192e"/>${T(82, 89, 'برو به ' + PEER_NAME, 13, 800, '#fff')}` },
+        ${RT(292, 64, PEER_NAME + '، همین مسیر', 12, 700, '#636982')}
+        ${RT(292, 92, toman(1820000), 17, 800, '#15192e')}
+        <rect x="194" y="102" width="98" height="22" rx="11" fill="#c5f04a"/>${RT(283, 117, fa(37000) + ' ارزون‌تر', 10.5, 800, '#15192e')}
+        <rect x="30" y="63" width="104" height="44" rx="13" fill="#15192e"/>${T(82, 90, 'برو به ' + PEER_NAME, 13, 800, '#fff')}` },
     { t: 'اعمال کن، بعد پیاده برو',
       d: TAPSI ? 'با «اعمال» همون صفحه با نقطه جدید باز می‌شه و قیمت تازه رو همون‌جا می‌بینی؛ تأیید لازم نیست. پیشنهادی رو نمی‌خوای؟ «نمی‌رم» رو بزن.' : 'با «اعمال» پین می‌ره سر نقطه جدید و خودش تأیید می‌شه. اگه تأیید نشد، روی پین بزن. پیشنهادی رو نمی‌خوای؟ «نمی‌رم» رو بزن.',
       art: () => `${MAPBG}<circle class="pulse" cx="160" cy="80" r="30" fill="none" stroke="#c5f04a" stroke-width="3.5"/>${SNAPPIN(160, 80)}
@@ -1615,17 +1778,21 @@
   }
   function closeGuide() {
     state.guide = null; settings.seenGuide = true; saveSettings();
-    state.sheet = true; state.anim = true;
+    // the first-run guide can open before there is a route: then go back to the map, not to an empty panel
+    state.sheet = onPricePage(); state.anim = state.sheet;
     emit();
   }
 
   function panelHTML() {
     const r = state.result, st = status();
     let h = `<div class="pn${state.anim ? ' in' : ''}" role="dialog" aria-label="یه‌قدم"><button class="grab" data-a="close" aria-label="جمع کن"><i></i></button><div class="hd">${LOGO}<span class="name">یه‌قدم</span><span class="unoff">غیررسمی</span><span class="sp"></span>
-      ${st && st.spin ? '<span class="spin"></span>' : ''}<button class="ic" data-a="guide" title="راهنما" aria-label="راهنما">${ICON.help}</button><button class="ic" data-a="close" title="جمع کن" aria-label="جمع کن">${phone() ? ICON.down : ICON.collapse}</button></div>`;
+      ${st && st.spin ? '<span class="spin"></span>' : ''}<button class="ic${state.prefs ? ' on' : ''}" data-a="prefs" title="تنظیمات" aria-label="تنظیمات" aria-pressed="${state.prefs}">${ICON.gear}</button><button class="ic" data-a="guide" title="راهنما" aria-label="راهنما">${ICON.help}</button><button class="ic" data-a="close" title="جمع کن" aria-label="جمع کن">${phone() ? ICON.down : ICON.collapse}</button></div>`;
     if (state.running) {
-      const done = r ? r.requests : 0, total = r && r.planned ? r.planned : 23;
+      const done = r ? r.requests : 0, total = r && r.planned ? r.planned : depth().max;
       h += `<div class="bar"><i style="transform:scaleX(${(done / Math.max(1, total)).toFixed(3)})"></i></div>`;
+    }
+    if (state.prefs) {
+      return h + `<div class="bd"><div class="ptitle">تنظیمات</div>${prefsHTML()}</div><div class="dock"><button class="btn" data-a="prefs">${ICON.check}تمام</button></div></div>`;
     }
     h += '<div class="bd">';
     let dock = '';
@@ -1721,9 +1888,10 @@
     if (a === 'terms') { state.guide = null; state.intro = 1; state.review = true; emit(); return; }
     if (a === 'reviewClose') { state.intro = null; state.review = false; state.sheet = true; emit(); return; }
     if (a === 'guideOut' && e.target !== t) return; // a tap inside the guide sheet, not on the backdrop
-    if (a === 'open') { state.sheet = true; state.anim = true; if (!settings.seenGuide && state.guide == null) state.guide = 0; emit(); }
+    if (a === 'open' && pillHeld) { pillHeld = false; return; }
+    if (a === 'open') { state.sheet = true; state.anim = true; state.prefs = false; if (!settings.seenGuide && state.guide == null) state.guide = 0; emit(); }
     else if (a === 'close') { state.sheet = false; emit(); }
-    else if (a === 'stop') state.cancel = true;
+    else if (a === 'stop') cancelSearch();
     else if (a === 'peerOn') { settings.peer = 'on'; saveSettings(); state.peer = null; emit(); }
     else if (a === 'peerOff') { settings.peer = 'off'; saveSettings(); state.peer = null; emit(); }
     else if (a === 'peerRefresh') { refreshPeer(); emit(); }
@@ -1732,7 +1900,11 @@
       if (NATIVE && NATIVE.peerOpen) NATIVE.peerOpen(JSON.stringify(pts || []));
       else window.postMessage({ yeghadam: 'peer-open', points: pts }, location.origin);
     }
-    else if (a === 'guide') { state.guide = 0; emit(); }
+    else if (a === 'prefs') { if (state.prefs) closePrefs(); else openPrefs(); }
+    else if (a === 'auto') { settings.auto = !settings.auto; saveSettings(); emit(); }
+    else if (a === 'depth') { if (DEPTH[k]) { settings.depth = k; saveSettings(); emit(); } }
+    else if (a === 'peerSet') { settings.peer = settings.peer === 'on' ? 'off' : 'on'; saveSettings(); state.peer = null; emit(); }
+    else if (a === 'guide') { state.guide = 0; state.prefs = false; emit(); }
     else if (a === 'guideNext') guideGo(1);
     else if (a === 'guidePrev') guideGo(-1);
     else if (a === 'guideSkip' || a === 'guideOut') closeGuide();
@@ -1746,7 +1918,7 @@
     else if (a === 'cat') {
       if (cat() === +k) return;
       settings.category = +k; saveSettings();
-      if (state.running) state.cancel = true;
+      if (state.running) cancelSearch();
       state.result = null; state.resultKey = ''; state.selected = null; state.error = null; state.setup = true;
       emit(); drawMap();
     }
@@ -1769,6 +1941,20 @@
     else if (a === 'manualGo') continueManual();
     else if (a === 'cancelApply') cancelApply();
   }
+  // Settings can be opened at any time, also before there is a route: from the panel's gear, from the Android app's own
+  // gear next to the service switch, or by holding (right-clicking) the pill.
+  function openPrefs() {
+    if (state.intro != null || state.off || state.apply) return;
+    state.guide = null; state.probe = null;
+    state.anim = !state.sheet; state.sheet = true; state.prefs = true;
+    emit();
+  }
+  function closePrefs() {
+    state.prefs = false;
+    if (!onPricePage()) state.sheet = false; // opened away from a route: back to the map, not to an empty panel
+    emit();
+  }
+  window.__yeghadamPrefs = openPrefs;
   // Android back button: close this UI first.
   window.__yeghadamBack = function () {
     if (state.review) { state.intro = null; state.review = false; emit(); return true; }
@@ -1777,6 +1963,7 @@
     if (state.guide != null) { closeGuide(); return true; }
     if (state.apply) { cancelApply(); return true; }
     if (state.probe) { state.probe = null; emit(); drawMap(); return true; }
+    if (state.sheet && state.prefs) { closePrefs(); return true; }
     if (state.sheet) { state.sheet = false; emit(); return true; }
     return false;
   };
@@ -1800,10 +1987,17 @@
     checkCompat();
     awayTicks = state.apply || routeOnScreen() ? 0 : awayTicks + 1;
     if (awayTicks === 2) {
-      if (state.running) state.cancel = true;
-      state.sheet = false; state.probe = null; state.guide = null; state.away = true;
+      if (state.running) cancelSearch();
+      // the guide and the settings stay: they are not about this route
+      if (!state.prefs) state.sheet = false;
+      state.probe = null; state.away = true;
       drawMap();
     } else if (!awayTicks && state.away) { state.away = false; drawMap(); }
+    // The first time the rider is signed in and the service's map is up, show the guide before anything else, so the
+    // "make it cheaper" button is expected when the prices appear instead of being explained only after it is pressed.
+    if (!settings.seenGuide && state.guide == null && state.intro == null && !state.off && !state.apply && state.map && signedIn()) {
+      state.guide = 0;
+    }
     layout();
     emit();
   }, 1500);
