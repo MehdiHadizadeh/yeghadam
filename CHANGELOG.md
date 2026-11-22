@@ -7,6 +7,14 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 ### Added
 - The README and the project page link to the Telegram channel [@yeghadam_app](https://t.me/yeghadam_app), which carries every release file and news of each version, for riders who cannot download from GitHub.
 
+### Changed
+- A price request that the service answers with 429 is not retried: the search stops and new searches pause for a while, instead of asking the same account again.
+- Retries now count against the search: one search sends at most its quote cap plus six requests, and gives up after three minutes.
+- A price asked for by the other service's page tries twice instead of four times, which fits inside the 40 s that page waits.
+- Map tiles that do not arrive within 8 seconds are given up, so a stalled tile no longer holds a search at "loading"; the search goes on with the roads the map already shows, or straight-line points.
+- The fallback pin tap no longer touches a button, link or field outside the map, whatever its text says; in that case the rider is asked to tap the pin.
+- The privacy notes say precisely where the token and session go: only to the service they belong to.
+
 ## [2.6.1] - 2026-11-21
 
 The first release of these changes. The v2.6.0 tag was never published: its release run stopped at the new signing check, whose pattern did not match the way apksigner prints the certificate.

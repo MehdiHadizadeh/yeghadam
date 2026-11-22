@@ -61,8 +61,56 @@ test('the other service gets this page\'s car price for a route', async () => {
 test('a request with no answer times out and reads as no price, without the rate-limit pause', { timeout: 10000 }, async () => {
   const p = page(stall);
   assert.deepEqual(plain(await p.w.__yeghadamPeerQuote(ROUTE)), { status: 'none' });
-  assert.equal(p.requests.length, 4, 'four attempts, each ended by the timeout');
+  assert.equal(p.requests.length, 2, 'two attempts, each ended by the timeout, inside the other page\'s 40 s wait');
   assert.equal((p.usage().cool || []).length, 0);
+});
+
+test('a 429 is never retried: one request, then new searches pause', async () => {
+  const p = page(() => answer({}, 429));
+  assert.deepEqual(plain(await p.w.__yeghadamPeerQuote(ROUTE)), { status: 'none' });
+  assert.equal(p.requests.length, 1);
+  assert.equal(p.usage().cool.length, 1);
+  const q = page((url) => (url.includes('/api/v3/price') ? answer({}, 429) : Promise.reject(new Error('no tiles'))));
+  const dbg = q.w.__yeghadamDebug;
+  dbg.state.route = { points: ROUTE, category: 1, t: 0 };
+  await dbg.run();
+  assert.equal(dbg.state.error, 'rate');
+  assert.equal(q.requests.filter((r) => r.url.includes('/api/v3/price')).length, 1);
+});
+
+test('retries count against the search: requests stay within the quote cap plus six', { timeout: 20000 }, async () => {
+  let n = 0; // every other request fails, so each quote takes two
+  const p = page((url) => (url.includes('/api/v3/price') ? (n++ % 2 ? answer(OK) : answer({}, 503)) : Promise.reject(new Error('no tiles'))));
+  const dbg = p.w.__yeghadamDebug;
+  dbg.state.route = { points: ROUTE, category: 1, t: 0 };
+  await dbg.run();
+  const sent = p.requests.filter((r) => r.url.includes('/api/v3/price')).length;
+  assert.ok(sent <= 25 + 6, `sent ${sent}`);
+  assert.equal(dbg.state.error, 'network');
+  assert.ok(dbg.state.result.base, 'what was found before the cap stays');
+  assert.equal(dbg.state.sends, null);
+});
+
+test('map tiles that never answer do not hold up the search', { timeout: 10000 }, async () => {
+  const p = page((url, init) => (url.includes('/api/v3/price') ? answer(OK) : stall(url, init)));
+  const dbg = p.w.__yeghadamDebug;
+  dbg.state.route = { points: ROUTE, category: 1, t: 0 };
+  await dbg.run();
+  assert.ok(dbg.state.result.base);
+  assert.equal(dbg.state.result.approx.origin, true, 'fell back to straight-line points');
+  const tile = p.requests.find((r) => !r.url.includes('/api/v3/price'));
+  assert.ok(tile.init.signal.aborted, 'the stalled tile request was aborted');
+});
+
+test('the fallback pin tap skips controls outside the map, whatever their text', () => {
+  const tappable = page(() => answer(OK)).w.__yeghadamDebug.pinTappable;
+  const el = (control, text) => ({ closest: () => (control ? { textContent: text || '' } : null) });
+  const inside = (c) => ({ contains: () => c });
+  assert.equal(tappable(el(false), 100, inside(false)), true, 'a plain element: the pin drawn over the map');
+  assert.equal(tappable(el(true, 'ادامه'), 100, inside(false)), false, 'an unknown button outside the map');
+  assert.equal(tappable(el(true, 'ادامه'), 100, inside(true)), true, 'a marker button on the map');
+  assert.equal(tappable(el(true, 'درخواست اسنپ'), 100, inside(true)), false, 'never a ride action');
+  assert.equal(tappable(null, 100, inside(true)), false);
 });
 
 test('server errors are not taken for a rate limit; a 429 is, and pauses new searches', async () => {
@@ -107,7 +155,7 @@ test('stopping a search aborts the price request it is waiting on', { timeout: 1
 test('without AbortController (old WebViews) a request with no answer still times out', { timeout: 10000 }, async () => {
   const p = page(stall, true);
   assert.deepEqual(plain(await p.w.__yeghadamPeerQuote(ROUTE)), { status: 'none' });
-  assert.equal(p.requests.length, 4);
+  assert.equal(p.requests.length, 2);
 });
 
 test('settings with unknown values fall back to the defaults', () => {

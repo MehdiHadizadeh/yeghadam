@@ -14,7 +14,7 @@ Yeghadam has no server and collects no data.
 - `https://api.tapsi.cab/api/v3.1/ride/preview`: the same quotes on Tapsi. These requests carry your Tapsi session exactly like the Tapsi web app does.
 - `https://tile.snappmaps.ir` and the map tile host named in Tapsi's own map style (`tap30.services`): public map tiles, without any credentials.
 
-Nothing is sent anywhere else. Your token and session never leave your device.
+Nothing is sent anywhere else. Your token and session go only to the service they belong to, in the same requests its own web app makes; Yeghadam has no server, so they never reach anyone else.
 
 ## The other service's price
 
