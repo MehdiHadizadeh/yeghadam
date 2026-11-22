@@ -34,7 +34,7 @@
 
 1. در اسنپ یا تپسی مبدا و مقصد را انتخاب کن تا قیمت بیاید، بعد روی **«ارزون‌ترش کن»** بزن.
 2. بگو امروز تا کجا حاضری پیاده بروی، برای مبدا و مقصد جدا: ۱۰۰، ۲۰۰ یا ۳۰۰ متر. ماشین یا موتور.
-3. چند ثانیه بعد، حداکثر سه پیشنهاد می‌بینی: چقدر ارزان‌تر، چند متر پیاده، کجا.
+3. چند ثانیه بعد، حداکثر سه پیشنهاد می‌بینی: چقدر ارزان‌تر، چند متر پیاده، کجا. اگر سفر از آن نقطه دو دقیقه یا بیشتر کوتاه‌تر یا طولانی‌تر شود، همان‌جا نوشته می‌شود.
 4. روی **«اعمال»** بزن. در اسنپ پین به همان نقطه می‌رود و خودش تأیید می‌شود (اگر تأیید نشد، روی پین بزن)؛ در تپسی خود صفحه با نقطه‌ی جدید باز می‌شود. بعد پیاده تا نقطه‌ی جدید برو.
 5. اگر اجازه بدهی، قیمت همان مسیر در سرویس دیگر هم کنار پیشنهادها نشان داده می‌شود و **«برو به تپسی»** (یا اسنپ) همان مسیر را آن‌جا باز می‌کند.
 
@@ -45,7 +45,7 @@
 ## امکانات
 
 - **فقط جاهایی که می‌شود رفت.** نقاط روی خیابان‌هایی انتخاب می‌شوند که ماشین می‌تواند آنجا بایستد؛ نه وسط بزرگراه، نه داخل تونل، نه روی رمپ.
-- **فاصله‌ی پیاده‌روی واقعی** روی شبکه‌ی خیابان‌ها، با عبور از عرض بلوار؛ نه خط هوایی.
+- **فاصله‌ی پیاده‌روی واقعی** روی شبکه‌ی خیابان‌ها، با عبور از عرض بلوار؛ نه خط هوایی، و نه از روی رمپ یا بزرگراهی که وسط بلوار است.
 - **اون‌ور خیابان** روی بلوارهای دوطرفه همیشه بررسی می‌شود؛ معمولاً مسیر راننده را عوض می‌کند.
 - **اسنپ و تپسی،** ماشین یا موتور، هر جا سرویس آن را برای مسیرت ارائه کند.
 - **فاصله‌ی جدا برای مبدا و مقصد.** مثلاً از مبدا ۱۰۰ متر و از مقصد ۳۰۰ متر. با «همین‌جا» یکی از دو سر سر جایش می‌ماند و همه‌ی استعلام‌ها برای سر دیگر خرج می‌شود.
@@ -152,11 +152,11 @@ Load `dist/extension/` with **Load unpacked** to try local changes.
 
 ### How the search works
 
-1. Road data comes from the public vector tiles the service's own map already uses (Snapp or Tapsi). Roads become a walking graph; the one-way carriageway pairs of divided roads get crossing links with a small penalty, and loose road ends left by tile simplification are joined to the road they meet.
+1. Road data comes from the public vector tiles the service's own map already uses (Snapp or Tapsi; Tapsi's street names come from the tiles' separate name layer). Roads become a walking graph; the one-way carriageway pairs of divided roads get crossing links with a small penalty, never through a ramp, highway or railway at street level between them, and loose road ends left by tile simplification are joined to the road they meet.
 2. Candidates are points a car can stop at (no motorways, ramps, tunnels or bridges), spread over rings of walking distance from the origin and from the destination.
 3. A search spends at most 25 quotes: a spread phase on both ends, then the remaining budget steps around the best point found so far.
 4. Snapp locks a quote for a few minutes per route. When the base price is older than the search, one extra quote on the same street shows the current price. Tapsi quotes expire after a minute and its page refreshes them on its own, so the panel shows the live price and warns when it moves.
-5. Results are the Pareto front of walking distance against price, limited to three options.
+5. Results are the Pareto front of walking distance against price, limited to three options. A card also shows how much the trip's expected length changes, from the service's own estimate in the same quote, when that is two minutes or more.
 
 The other service's price: each page only ever calls its own API. With the rider's consent, the page asks the shell (Android bridge, or the extension's relay and background script) to hand the route to the page of the other service, which quotes it with its own session and answers. Opening the other service carries the route: Tapsi takes it in its URL; for Snapp the script moves the map and presses Snapp's own confirm buttons on its start page.
 
