@@ -5,7 +5,7 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 ## [Unreleased]
 
 ### Added
-- Snapp's price answer carries the trip's expected minutes per service (`estimation.eta`). Searches keep them with each quoted point, and the page keeps a local log of the last 60 Snapp searches: for each checked point the change in price and in trip minutes, the walk and the side of the road, with no places or coordinates. `__yeghadamDebug.eta()` in the console shows the log and a summary (how often a shorter trip was cheaper, and the correlation), to learn whether trip time is worth using to choose which points to check first.
+- Both services' price answers say how long the trip is expected to take: Snapp in minutes per service (`estimation.eta`), Tapsi as the time the trip should end ("پایان سفر"), which is turned into minutes. Searches keep them with each quoted point, and each service's page keeps a local log of its last 60 searches: for each checked point the change in price and in trip minutes, the walk and the side of the road, with no places or coordinates. `__yeghadamDebug.eta()` in the console shows the log and a summary (how often a shorter trip was cheaper, and the correlation), to learn whether trip time is worth using to choose which points to check first.
 
 ## [2.6.2] - 2026-11-22
 

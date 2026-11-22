@@ -733,8 +733,9 @@
     state.selected = top ? top.c : null;
     emit(); drawMap();
   }
-  // Snapp's price answer carries the trip's expected minutes. Keep, on this device only, how price and trip time moved
-  // together in the last searches (no places), to learn whether a shorter trip goes with a cheaper quote.
+  // Both services' price answers carry the trip's expected length (Snapp in minutes, Tapsi as an end time). Keep, on this
+  // device only, how price and trip time moved together in the last searches (no places), to learn whether a shorter
+  // trip goes with a cheaper quote.
   // Read it from the console: __yeghadamDebug.eta()
   const ETA_KEY = 'yeghadam:eta';
   const ETA_KEEP = 60;
@@ -745,6 +746,7 @@
   function noteEta(res) {
     const entry = C.etaEntry(res);
     if (!entry) return;
+    entry.s = TAPSI ? 't' : 's';
     const log = etaLog();
     log.push(entry);
     try { localStorage.setItem(ETA_KEY, JSON.stringify(log.slice(-ETA_KEEP))); } catch (e) {}

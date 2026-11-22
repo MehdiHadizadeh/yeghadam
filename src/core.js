@@ -510,9 +510,22 @@
       metadata: { flowType: 'ORIGIN_FIRST', previewType: 'ORIGIN_FIRST', ttpEvents: { destinationSelectedAt: t - 60000, cabSelectedAt: t - 50000, originSelectedAt: t - 1000 } },
     };
   }
-  function parseTapsiPrices(json, category) {
+  // Tapsi gives no trip minutes, only the expected end of the trip as text in Tehran time ("trip ends: 01:02",
+  // in Persian digits).
+  // Minutes from `now` to that time; Iran keeps UTC+3:30 all year.
+  function tapsiTripMinutes(text, now) {
+    const m = /([0-9۰-۹]{1,2}):([0-9۰-۹]{2})/.exec(String(text || ''));
+    if (!m) return null;
+    const num = (s) => +s.replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 0x06f0);
+    const end = num(m[1]) * 60 + num(m[2]);
+    if (!(end >= 0 && end < 1440)) return null;
+    const t = (((now == null ? Date.now() : now) / 60000 + 210) % 1440 + 1440) % 1440;
+    const mins = Math.round((((end - t) % 1440) + 1440) % 1440);
+    return mins > 0 && mins < 600 ? mins : null;
+  }
+  function parseTapsiPrices(json, category, now) {
     const tabs = (json && json.data && Array.isArray(json.data.tabs) && json.data.tabs) || [];
-    const prices = {}, names = {};
+    const prices = {}, names = {}, etas = {};
     for (const tab of tabs) {
       if (tab.key !== TAPSI_TABS[category || 1]) continue;
       for (const it of tab.items || []) {
@@ -522,6 +535,8 @@
         const id = tapsiServiceId(s.key);
         names[id] = TAPSI_SERVICES[s.key] ? TAPSI_SERVICES[s.key][1] : 'سرویس دیگر';
         if (step && step.passengerShare > 0) prices[id] = step.passengerShare * 10;
+        const eta = tapsiTripMinutes(s.subtitle, now);
+        if (eta) etas[id] = eta;
       }
     }
     const categories = [];
@@ -529,7 +544,7 @@
       const tab = tabs.find((t) => t.key === TAPSI_TABS[id]);
       if (tab) categories.push({ id, name: tab.title || (id === 1 ? 'ماشین' : 'موتور') });
     }
-    return { prices, names, ttl: json && json.data && json.data.ttl, categories };
+    return { prices, names, etas, ttl: json && json.data && json.data.ttl, categories };
   }
 
   /* ---------------- settings and Tapsi route helpers ---------------- */
@@ -839,7 +854,7 @@
   return {
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
     pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
-    normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
+    tapsiTripMinutes, normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
     search, cards, priceOf, etaEntry, etaStats,
     bestOf, normalizeFa, SearchError,
   };

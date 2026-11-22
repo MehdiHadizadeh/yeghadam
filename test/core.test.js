@@ -367,6 +367,19 @@ test('parseTapsiPrices converts toman to rial and reads the default price step',
   assert.deepEqual(C.parseTapsiPrices(tapsiPreview, 2).prices, { 11: 2090000 });
 });
 
+test('parseTapsiPrices reads the trip minutes from the end time Tapsi shows, in Tehran time', () => {
+  const now = Date.UTC(2026, 10, 22, 21, 15, 50); // 00:45:50 in Tehran
+  const json = { data: { tabs: [{ key: 'CAR', items: [
+    { service: { key: 'STANDARD', subtitle: 'پایان سفر: ۰۱:۰۲', prices: [{ passengerShare: 130000 }] } },
+    { service: { key: 'WAIT_AND_SAVE', subtitle: 'تا ۱۰ دقیقه صبر کنید', prices: [{ passengerShare: 120000 }] } },
+  ] }] } };
+  assert.deepEqual(C.parseTapsiPrices(json, 1, now).etas, { 1: 16 }, 'a waiting note is not an end time');
+  assert.equal(C.tapsiTripMinutes('پایان سفر: 00:10', Date.UTC(2026, 10, 22, 20, 20)), 20, 'past midnight');
+  assert.equal(C.tapsiTripMinutes('', now), null);
+  assert.equal(C.tapsiTripMinutes('25:99', now), null);
+  assert.deepEqual(C.parseTapsiPrices(tapsiPreview, 1).etas, {});
+});
+
 test('parseTapsiPrices copes with an unexpected response', () => {
   const q = C.parseTapsiPrices({ data: {} }, 1);
   assert.deepEqual(q.prices, {});
