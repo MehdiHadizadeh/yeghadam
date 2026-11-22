@@ -397,12 +397,21 @@
   async function pause(ms, standalone) {
     for (let left = ms; left > 0 && (standalone || !state.cancel); left -= 100) await sleep(Math.min(100, left));
   }
+  // A search counts quotes, but one quote can take several requests. run() sets `state.sends`: how many requests the
+  // whole search may still send, retries included, and the time by which it must be done.
+  const SEARCH_RETRIES = 6;
+  const SEARCH_MS = 3 * 60e3;
   async function quote(points, category, standalone) {
     const catId = category || cat();
     const body = JSON.stringify(TAPSI ? C.tapsiPriceBody(points) : C.priceBody(points, catId));
-    let limited = false; // the service answered 429 at least once
-    for (let attempt = 0; attempt < 4; attempt++) {
+    // A standalone quote answers the other service's page, which stops waiting after 40 s: two tries fit in that.
+    const tries = standalone ? 2 : 4;
+    for (let attempt = 0; attempt < tries; attempt++) {
       if (!standalone && state.cancel) throw new C.SearchError('cancel');
+      if (!standalone && state.sends) {
+        if (state.sends.left <= 0 || Date.now() > state.sends.until) throw new C.SearchError('network');
+        state.sends.left--;
+      }
       const auth = TAPSI ? null : authHeader();
       if (!TAPSI && !auth) throw new C.SearchError('auth');
       const headers = TAPSI ? { 'content-type': 'application/json', 'x-agent': tapsiAgent() } : { 'content-type': 'application/json', authorization: auth };
@@ -427,7 +436,8 @@
       }
       if (r.status === 401 || r.status === 403) throw new C.SearchError('auth');
       if (r.status === 400) throw new C.SearchError('unavailable'); // e.g. no motorbikes on this route, or a point the service refuses
-      if (r.status === 429) { limited = true; await pause(3000 * (attempt + 1), standalone); continue; }
+      // The service is limiting this account: asking again only adds to it. Pause new searches for a while.
+      if (r.status === 429) { noteUsage('cool'); throw new C.SearchError('rate'); }
       if (!r.ok) { await pause(1000 * (attempt + 1), standalone); continue; }
       const json = safeJSON(text);
       if (TAPSI) {
@@ -439,9 +449,7 @@
       if (!json || !json.data || !Array.isArray(json.data.services)) throw new C.SearchError('changed');
       return C.parsePrices(json);
     }
-    // Only a 429 means the service is limiting this account, and only then do new searches pause for a while. No answer
-    // or server errors on every attempt is a connection problem, not a reason to lock the rider out.
-    if (limited) { noteUsage('cool'); throw new C.SearchError('rate'); }
+    // No answer or server errors on every attempt is a connection problem, not a reason to lock the rider out.
     throw new C.SearchError('network');
   }
   // Stops the running search, including the price request it is waiting on.
@@ -611,13 +619,25 @@
     if (e.source === window && d && d.yeghadamRelay === true && d.type === 'route' && d.points) startCarry(d.points);
   });
 
+  // Map data is a GET that may stall like a quote can. Give up after TILE_MS, so the search falls back to the roads the
+  // map has already drawn instead of waiting with no end. `read` turns the response into its body.
+  const TILE_MS = 8000;
+  function getWithin(url, init, read) {
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    let timer = 0;
+    const late = new Promise((_, reject) => { timer = setTimeout(() => { if (ctl) ctl.abort(); reject(new Error('timeout')); }, TILE_MS); });
+    const got = nativeFetch(url, ctl ? Object.assign({ signal: ctl.signal }, init) : init)
+      .then((r) => (r.ok ? read(r) : Promise.reject(new Error('map ' + r.status))));
+    // no Promise.prototype.finally: old Android WebViews lack it
+    return Promise.race([got, late]).then((v) => { clearTimeout(timer); return v; }, (e) => { clearTimeout(timer); throw e; });
+  }
   // Tapsi's tile URL carries a release stamp that changes; read it from the map's own style instead of hardcoding it.
   let tapsiTemplate = null;
   function tapsiTileUrl(t) {
     if (!tapsiTemplate) {
       const src = state.map && state.map.getStyle && state.map.getStyle().sources.openmaptiles;
       if (!src) return Promise.reject(new Error('no style'));
-      tapsiTemplate = (src.tiles && src.tiles[0] ? Promise.resolve(src.tiles[0]) : nativeFetch(src.url, { credentials: 'omit' }).then((r) => r.json()).then((j) => j.tiles[0]))
+      tapsiTemplate = (src.tiles && src.tiles[0] ? Promise.resolve(src.tiles[0]) : getWithin(src.url, { credentials: 'omit' }, (r) => r.json()).then((j) => j.tiles[0]))
         .catch((e) => { tapsiTemplate = null; throw e; });
     }
     return tapsiTemplate.then((tpl) => tpl.replace('{z}', t.z).replace('{x}', t.x).replace('{y}', t.y));
@@ -627,8 +647,8 @@
     const k = t.z + '/' + t.x + '/' + t.y;
     if (!tiles.has(k)) {
       if (tiles.size > 24) tiles.delete(tiles.keys().next().value);
-      const p = (TAPSI ? tapsiTileUrl(t).then((u) => nativeFetch(u, { credentials: 'omit' })) : nativeFetch(TILE_URL + k + '.pbf'))
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('tile ' + r.status))))
+      const body = (r) => r.arrayBuffer();
+      const p = (TAPSI ? tapsiTileUrl(t).then((u) => getWithin(u, { credentials: 'omit' }, body)) : getWithin(TILE_URL + k + '.pbf', {}, body))
         .then((b) => C.decodeTile(new Uint8Array(b), t));
       p.catch(() => tiles.delete(k));
       tiles.set(k, p);
@@ -689,6 +709,7 @@
     state.resultKey = routeKey(state.route);
     state.result = null;
     emit(); drawMap();
+    state.sends = { left: depth().max + SEARCH_RETRIES, until: Date.now() + SEARCH_MS };
     const res = await C.search({
       route: { points: state.route.points, category: cat() },
       budgets: settings.budgets,
@@ -700,6 +721,7 @@
       isCancelled: () => state.cancel,
       onProgress: (r) => { if (state.resultKey === keyOf(r)) { ensureIds(r); state.result = r; scheduleDraw(); emit(); } },
     });
+    state.sends = null;
     state.running = false;
     state.cancel = false;
     if (keyOf(res) !== state.resultKey) { emit(); return; } // route changed meanwhile
@@ -979,19 +1001,23 @@
       try {
         const m = state.map, c = m.getCenter(), pt = m.project([c.lng, c.lat]), rect = m.getContainer().getBoundingClientRect();
         const x = rect.left + pt.x, y = rect.top + pt.y, el = document.elementFromPoint(x, y);
-        if (pinTappable(el, y)) tap(el);
+        if (pinTappable(el, y, m.getContainer())) tap(el);
       } catch (e) { /* the manual guide stays */ }
     }, 500);
   }
   // The fallback confirm taps whatever sits at the map's centre, which should be Snapp's pin. Whatever the page shows
   // there, that tap must never land on our own UI, on Snapp's ride sheet, or on a control that requests, cancels or pays
-  // for a ride. When in doubt it does nothing and the rider is asked to tap the pin.
+  // for a ride. Outside the map itself only a plain element (the pin drawn over the map) qualifies: any button, link or
+  // field there is something else, whatever its text says. When in doubt it does nothing and the rider is asked to tap the pin.
   const RIDE_ACTION = /درخواست|لغو|پرداخت/;
-  function pinTappable(el, y) {
-    if (!el || el === host || host.contains(el)) return false;
+  const CONTROL = 'button,a,input,select,textarea,label,[role="button"],[role="link"],[role="menuitem"],[role="tab"],[role="checkbox"],[role="switch"]';
+  function pinTappable(el, y, mapBox) {
+    if (!el || (host && (el === host || host.contains(el)))) return false;
     if (sheetSeen && y >= lastSheet) return false;
-    const control = el.closest('button,a,[role="button"]');
-    return !control || !RIDE_ACTION.test(C.normalizeFa(control.textContent));
+    const control = el.closest(CONTROL);
+    if (!control) return true;
+    if (!mapBox || !mapBox.contains(control)) return false;
+    return !RIDE_ACTION.test(C.normalizeFa(control.textContent));
   }
   function advanceApply(route) {
     const a = state.apply, s = a.steps[a.i];
@@ -1658,7 +1684,7 @@
   // Full-screen navy, like the app's banners: one idea per screen, a big headline with one lime word.
   const NOTICE = [
     [ICON.info, `یه‌قدم برنامه‌ی رسمی ${NAME} نیست و هیچ ربطی بهش نداره.`],
-    [ICON.shield, `فقط قیمت می‌پرسه، با حساب خودت و روی دستگاه خودت. هیچ‌وقت سفر درخواست یا لغو نمی‌کنه و اطلاعاتت از دستگاهت بیرون نمی‌ره.`],
+    [ICON.shield, `فقط قیمت می‌پرسه، با حساب خودت و روی دستگاه خودت. هیچ‌وقت سفر درخواست یا لغو نمی‌کنه و اطلاعاتت جز به خود اسنپ و تپسی جایی فرستاده نمی‌شه.`],
     [ICON.check, `قیمت ${PEER_NAME} رو فقط وقتی اجازه بدی می‌پرسه. قیمت نهایی همونیه که ${NAME} موقع درخواست سفر نشون می‌ده.`],
     [ICON.alert, `بعیده، ولی ممکنه ${NAME} استعلام خودکار رو خلاف قوانینش بدونه و حسابت رو محدود کنه. استفاده با مسئولیت خودته.`],
   ];
@@ -2002,5 +2028,5 @@
     emit();
   }, 1500);
 
-  window.__yeghadamDebug = { state, settings: () => settings, run, findSnappLabel, core: C, allQuoted };
+  window.__yeghadamDebug = { state, settings: () => settings, run, findSnappLabel, pinTappable, core: C, allQuoted };
 })();
