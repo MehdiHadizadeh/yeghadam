@@ -4,6 +4,9 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+- A suggestion card says when its trip is two minutes or more shorter or longer than the route as it was, by the service's own estimate: Snapp's trip minutes, or the end time Tapsi shows. Nothing is stored.
+
 ## [2.6.2] - 2026-11-22
 
 ### Added

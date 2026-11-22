@@ -760,6 +760,7 @@
         p[0] = { lat: bo.lat, lng: bo.lng };
         p[last] = { lat: bd.lat, lng: bd.lng };
         res.combo = { kind: 'both', origin: bo, dest: bd, walk: bo.walk + bd.walk, prices: await ask(p) };
+        res.combo.etas = lastEtas;
         progress(res);
       }
       if (res.requests > 1 && res.requests < maxReq) {
@@ -808,6 +809,14 @@
     }));
   }
 
+  // How many minutes longer (positive) or shorter (negative) the trip from a suggestion is than the route as it was, by
+  // the service's own estimate. Null when either estimate is missing.
+  function tripChange(res, c, sid) {
+    const be = res && res.base && res.base.etas && res.base.etas[sid];
+    const e = c && c.etas && c.etas[sid];
+    return be > 0 && e > 0 ? e - be : null;
+  }
+
   // Normalize Persian label text: drop kashida (U+0640) and ZWNJ, map hamza alef forms to plain alef, Arabic yeh and kaf to Persian.
   const normalizeFa = (s) => String(s || '').replace(/[ـ‌]/g, '').replace(/[أإآ]/g, 'ا').replace(/ي/g, 'ی').replace(/ك/g, 'ک');
 
@@ -815,7 +824,7 @@
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
     pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
     tapsiTripMinutes, normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
-    search, cards, priceOf,
+    search, cards, priceOf, tripChange,
     bestOf, normalizeFa, SearchError,
   };
 });

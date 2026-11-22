@@ -316,6 +316,15 @@ test('parsePrices reads the trip minutes Snapp estimates per service', () => {
   assert.deepEqual(q.etas, { 1: 23 });
 });
 
+test('tripChange compares a suggestion\'s trip minutes with the route as it was', () => {
+  const res = { base: { etas: { 1: 20 } } };
+  assert.equal(C.tripChange(res, { etas: { 1: 17 } }, 1), -3);
+  assert.equal(C.tripChange(res, { etas: { 1: 24 } }, 1), 4);
+  assert.equal(C.tripChange(res, { etas: { 2: 17 } }, 1), null, 'no estimate for this service');
+  assert.equal(C.tripChange({ base: {} }, { etas: { 1: 17 } }, 1), null);
+  assert.equal(C.tripChange(null, null, 1), null);
+});
+
 const tapsiPreview = {
   result: 'OK',
   data: {
