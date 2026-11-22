@@ -4,6 +4,17 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-11-23
+
+### Fixed
+- Tapsi suggestions name the street of each point, as Snapp's do. Tapsi's map keeps street names in a layer of their own, which is now read along with the roads.
+
+### Changed
+- The README and the project page mention the trip-time line on the cards and that a walk never crosses a ramp or highway.
+
+### Security
+- The Android app takes the calls that change a setting, accept or decline the notice, show a message or reach the other service only from Yeghadam's own script in the page, not from other frames the site embeds.
+
 ## [2.7.0] - 2026-11-23
 
 ### Added
@@ -164,7 +175,8 @@ The first release of these changes. The v2.6.0 tag was never published: its rele
 
 First public release.
 
-[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.7.1...HEAD
+[2.7.1]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.7.1
 [2.7.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.7.0
 [2.6.2]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.2
 [2.6.1]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.1

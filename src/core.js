@@ -153,6 +153,91 @@
     }
   }
 
+  // Tapsi's tiles keep street names in a layer of their own (transportation_name), drawn along the same lines as the
+  // roads. Give each unnamed road the name of the line of the same class that runs along most of its points.
+  function nameRoads(roads, named) {
+    const first = roads.length && roads[0].lines[0][0];
+    if (!first || !named.length) return roads;
+    const pr = projector({ lng: first[0], lat: first[1] });
+    const CELL = 20, NEAR = 4, grid = new Map();
+    for (const f of named) {
+      const name = f.props && f.props.name;
+      if (!name) continue;
+      for (const l of f.lines) {
+        for (let i = 0; i + 1 < l.length; i++) {
+          const a = pr.xy(l[i][0], l[i][1]), b = pr.xy(l[i + 1][0], l[i + 1][1]);
+          const s = { a, b, name, cls: f.props.class };
+          // every cell within NEAR of the piece, so a point looks in its own cell only
+          const x0 = Math.floor((Math.min(a[0], b[0]) - NEAR) / CELL), x1 = Math.floor((Math.max(a[0], b[0]) + NEAR) / CELL);
+          const y0 = Math.floor((Math.min(a[1], b[1]) - NEAR) / CELL), y1 = Math.floor((Math.max(a[1], b[1]) + NEAR) / CELL);
+          if ((x1 - x0 + 1) * (y1 - y0 + 1) > 2500) continue; // a broken line, not a street
+          for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+            const k = x + ':' + y;
+            (grid.get(k) || grid.set(k, []).get(k)).push(s);
+          }
+        }
+      }
+    }
+    const nearest = (p, cls) => {
+      let best = null, bd = NEAR;
+      for (const s of grid.get(Math.floor(p[0] / CELL) + ':' + Math.floor(p[1] / CELL)) || []) {
+        if (s.cls !== cls) continue;
+        const dx = s.b[0] - s.a[0], dy = s.b[1] - s.a[1], L2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((p[0] - s.a[0]) * dx + (p[1] - s.a[1]) * dy) / L2));
+        const d = Math.hypot(s.a[0] + t * dx - p[0], s.a[1] + t * dy - p[1]);
+        if (d < bd) { bd = d; best = s.name; }
+      }
+      return best;
+    };
+    // The name along one piece of road (from `from` to `to` metres along its line of `total`), from points every few
+    // metres. Points within a few metres of the line's own ends are left out: there it touches the streets it meets,
+    // which carry other names. Null when the piece has no point to go by.
+    const SKIP = NEAR + 1;
+    const pieceName = (a, b, from, total, cls) => {
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]), votes = new Map();
+      let n = 0;
+      for (let d = Math.min(2.5, L / 2); d < L; d += 5) {
+        if (from + d < SKIP || from + d > total - SKIP) continue;
+        n++;
+        const name = nearest([a[0] + ((b[0] - a[0]) * d) / L, a[1] + ((b[1] - a[1]) * d) / L], cls);
+        if (name) votes.set(name, (votes.get(name) || 0) + 1);
+      }
+      if (!n) return null;
+      let name = '', most = 0;
+      for (const [k, v] of votes) if (v > most) { most = v; name = k; }
+      return most * 2 > n ? name : '';
+    };
+    // Without names, Tapsi's tiles join consecutive streets of one class into one line, so a line is split where
+    // the name changes.
+    const out = [];
+    for (const r of roads) {
+      if (!r.props || r.props.name) { out.push(r); continue; }
+      const parts = new Map();
+      for (const l of r.lines) {
+        const xy = l.map((p) => pr.xy(p[0], p[1])), at = [0];
+        for (let i = 1; i < xy.length; i++) at.push(at[i - 1] + Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]));
+        const total = at[at.length - 1];
+        const names = [];
+        for (let i = 0; i + 1 < l.length; i++) names.push(pieceName(xy[i], xy[i + 1], at[i], total, r.props.class));
+        // a piece with nothing to go by (a short one at an end) follows its neighbour
+        for (let i = 1; i < names.length; i++) if (names[i] == null) names[i] = names[i - 1];
+        for (let i = names.length - 2; i >= 0; i--) if (names[i] == null) names[i] = names[i + 1];
+        let run = null, runName = null;
+        for (let i = 0; i + 1 < l.length; i++) {
+          const name = names[i] || '';
+          if (!run || name !== runName) {
+            run = [l[i]];
+            runName = name;
+            (parts.get(name) || parts.set(name, []).get(name)).push(run);
+          }
+          run.push(l[i + 1]);
+        }
+      }
+      for (const [name, lines] of parts) out.push({ props: name ? Object.assign({}, r.props, { name }) : r.props, lines });
+    }
+    return out;
+  }
+
   /* ---------------- walking graph ---------------- */
   // Pedestrians cannot walk along these; cars cannot stop on anything outside STOP.
   const NO_WALK = new Set(['motorway', 'trunk', 'construction', 'rail', 'transit', 'ferry', 'raceway', 'busway', 'subway']);
@@ -849,7 +934,7 @@
   return {
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
     pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
-    tapsiTripMinutes, normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
+    tapsiTripMinutes, nameRoads, normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
     search, cards, priceOf, tripChange,
     bestOf, normalizeFa, SearchError,
   };

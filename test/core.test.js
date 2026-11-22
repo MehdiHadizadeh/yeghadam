@@ -67,6 +67,26 @@ test('an assumed boulevard crossing never cuts through a ramp or a highway betwe
   assert.equal(w.crossed[nearest(g, 0, -6)], 1);
 });
 
+test('nameRoads gives Tapsi roads the names of the lines drawn along them', () => {
+  // one unnamed line that runs along two streets, as Tapsi joins them, and a side alley that meets the first one
+  const roads = [
+    { props: { class: 'minor' }, lines: [line([[-100, 0], [0, 0], [100, 0]])] },
+    { props: { class: 'minor' }, lines: [line([[-50, 0], [-50, 8]])] },
+    { props: { class: 'primary', name: 'own' }, lines: [line([[0, 50], [100, 50]])] },
+  ];
+  const named = [
+    { props: { class: 'minor', name: 'west' }, lines: [line([[-100, 1], [0, 1]])] },
+    { props: { class: 'minor', name: 'east' }, lines: [line([[0, -1], [100, -1]])] },
+    { props: { class: 'primary', name: 'other class' }, lines: [line([[-50, 0], [-50, 8]])] },
+  ];
+  const out = C.nameRoads(roads, named);
+  const names = out.map((r) => r.props.name || '').sort();
+  assert.deepEqual(names, ['', 'east', 'own', 'west'], 'split where the name changes; the alley stays unnamed');
+  const west = out.find((r) => r.props.name === 'west');
+  assert.equal(west.lines[0].length, 2);
+  assert.equal(C.nameRoads(roads, []), roads, 'no name layer: unchanged');
+});
+
 test('a pin on a park path or next to a highway starts on the nearest street', () => {
   const extra = features.concat([
     { props: { class: 'path', subclass: 'footway', osm_id: 7 }, lines: [line([[0, 30], [0, 60], [30, 60]])] }, // park, not connected
