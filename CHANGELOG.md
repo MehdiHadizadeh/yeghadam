@@ -4,6 +4,8 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-11-22
+
 ### Added
 - The README and the project page link to the Telegram channel [@yeghadam_app](https://t.me/yeghadam_app), which carries every release file and news of each version, for riders who cannot download from GitHub.
 
@@ -154,7 +156,8 @@ The first release of these changes. The v2.6.0 tag was never published: its rele
 
 First public release.
 
-[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.6.1...HEAD
+[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.6.2...HEAD
+[2.6.2]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.2
 [2.6.1]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.1
 [2.5.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.5.0
 [2.4.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.4.0
