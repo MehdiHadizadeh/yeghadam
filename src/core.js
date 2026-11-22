@@ -808,46 +808,6 @@
     }));
   }
 
-  /* ---------------- trip time against price ---------------- */
-  // Does a shorter trip go with a lower price? Each quoted point of a search gives one row: walk, side of the road and
-  // the change in price (toman) and in the trip's expected minutes against the route as it was. No places or
-  // coordinates, so a log of these says nothing about where the rider went.
-  function etaEntry(res, at) {
-    const sid = res.sid, base = res.base;
-    const bp = priceOf(base, sid), be = base && base.etas && base.etas[sid];
-    if (!isFinite(bp) || !(be > 0)) return null;
-    const rows = [];
-    for (const c of res.origins.concat(res.dests)) {
-      const p = priceOf(c, sid), e = c.etas && c.etas[sid];
-      if (!isFinite(p) || !(e > 0)) continue;
-      rows.push({ k: c.kind === 'origin' ? 'o' : 'd', w: c.walk, x: c.crossed ? 1 : 0, dp: Math.round((p - bp) / 10), de: e - be });
-    }
-    if (!rows.length) return null;
-    const d = new Date(at || res.at);
-    return { h: d.getHours(), wd: d.getDay(), sid, be, lock: res.baseLock ? 1 : 0, drift: Math.round((res.drift || 0) / 10), rows };
-  }
-  // Summary over logged searches: how often a point with a shorter trip was cheaper, and the correlation of the two
-  // changes. Searches whose base price was locked from earlier are left out: their price differences mix in time.
-  function etaStats(log) {
-    const rows = [];
-    for (const e of log || []) if (e && !e.lock && Array.isArray(e.rows)) rows.push(...e.rows);
-    const group = (f) => {
-      const g = rows.filter(f), cheaper = g.filter((r) => r.dp <= -MIN_SAVING / 10).length;
-      return { n: g.length, cheaper, share: g.length ? Math.round((100 * cheaper) / g.length) : null };
-    };
-    let r = null;
-    if (rows.length > 2) {
-      const n = rows.length, mx = rows.reduce((s, x) => s + x.de, 0) / n, my = rows.reduce((s, x) => s + x.dp, 0) / n;
-      let sxy = 0, sxx = 0, syy = 0;
-      for (const x of rows) { sxy += (x.de - mx) * (x.dp - my); sxx += (x.de - mx) ** 2; syy += (x.dp - my) ** 2; }
-      r = sxx && syy ? Math.round((100 * sxy) / Math.sqrt(sxx * syy)) / 100 : null;
-    }
-    return {
-      searches: (log || []).filter((e) => e && !e.lock).length, points: rows.length, correlation: r,
-      shorter: group((x) => x.de < 0), same: group((x) => x.de === 0), longer: group((x) => x.de > 0),
-    };
-  }
-
   // Normalize Persian label text: drop kashida (U+0640) and ZWNJ, map hamza alef forms to plain alef, Arabic yeh and kaf to Persian.
   const normalizeFa = (s) => String(s || '').replace(/[ـ‌]/g, '').replace(/[أإآ]/g, 'ا').replace(/ي/g, 'ی').replace(/ك/g, 'ک');
 
@@ -855,7 +815,7 @@
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
     pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
     tapsiTripMinutes, normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
-    search, cards, priceOf, etaEntry, etaStats,
+    search, cards, priceOf,
     bestOf, normalizeFa, SearchError,
   };
 });

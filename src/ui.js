@@ -727,29 +727,10 @@
     if (keyOf(res) !== state.resultKey) { emit(); return; } // route changed meanwhile
     ensureIds(res);
     state.result = res;
-    noteEta(res);
     if (res.error && res.error !== 'cancel') state.error = res.error;
     const top = currentCards()[0];
     state.selected = top ? top.c : null;
     emit(); drawMap();
-  }
-  // Both services' price answers carry the trip's expected length (Snapp in minutes, Tapsi as an end time). Keep, on this
-  // device only, how price and trip time moved together in the last searches (no places), to learn whether a shorter
-  // trip goes with a cheaper quote.
-  // Read it from the console: __yeghadamDebug.eta()
-  const ETA_KEY = 'yeghadam:eta';
-  const ETA_KEEP = 60;
-  function etaLog() {
-    const log = safeJSON(lsGet(ETA_KEY));
-    return Array.isArray(log) ? log : [];
-  }
-  function noteEta(res) {
-    const entry = C.etaEntry(res);
-    if (!entry) return;
-    entry.s = TAPSI ? 't' : 's';
-    const log = etaLog();
-    log.push(entry);
-    try { localStorage.setItem(ETA_KEY, JSON.stringify(log.slice(-ETA_KEEP))); } catch (e) {}
   }
   const keyOf = (r) => routeKey({ points: r.routePoints, category: CAR }); // result category is cleared on switch
   // stable ids, so the sheet and the map can refer to candidates
@@ -2047,8 +2028,5 @@
     emit();
   }, 1500);
 
-  window.__yeghadamDebug = {
-    state, settings: () => settings, run, findSnappLabel, pinTappable, core: C, allQuoted,
-    eta: () => ({ stats: C.etaStats(etaLog()), log: etaLog() }),
-  };
+  window.__yeghadamDebug = { state, settings: () => settings, run, findSnappLabel, pinTappable, core: C, allQuoted };
 })();
