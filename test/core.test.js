@@ -45,6 +45,28 @@ test('walking graph crosses a divided boulevard with a penalty', () => {
   assert.equal(w.dist[nearest(200, -100)], Infinity);
 });
 
+test('an assumed boulevard crossing never cuts through a ramp or a highway between the carriageways', () => {
+  const nearest = (g, x, y) => g.nodes.map((n, i) => [i, Math.hypot(n.x - x, n.y - y)]).sort((a, b) => a[1] - b[1])[0][0];
+  // a ramp runs between the carriageways from x = -300 to x = 300: no crossing anywhere, the far side is out of reach
+  const ramp = { props: { class: 'primary', ramp: 1, oneway: 1, osm_id: 8 }, lines: [line([[-300, 0], [300, 0]])] };
+  let g = C.buildGraph(features.concat([ramp]), center, 200);
+  let w = C.walkFrom(g, start, 200);
+  assert.equal(w.crossed[nearest(g, 0, -6)], 0);
+  assert.equal(w.dist[nearest(g, 0, -6)], Infinity);
+  // the ramp only covers x = 20..300: crossing west of it still works, so the far side is reached around it
+  const shortRamp = { props: { class: 'primary', ramp: 1, oneway: 1, osm_id: 8 }, lines: [line([[20, 0], [300, 0]])] };
+  g = C.buildGraph(features.concat([shortRamp]), center, 300);
+  w = C.walkFrom(g, pr.ll(100, 6), 300);
+  const far = nearest(g, 100, -6);
+  assert.equal(w.crossed[far], 1);
+  assert.ok(w.walked[far] > 150, 'walks past the ramp to cross, got ' + w.walked[far]);
+  // a ramp on a bridge passes overhead and does not block the crossing
+  const bridge = { props: { class: 'primary', ramp: 1, brunnel: 'bridge', oneway: 1, osm_id: 8 }, lines: [line([[-300, 0], [300, 0]])] };
+  g = C.buildGraph(features.concat([bridge]), center, 200);
+  w = C.walkFrom(g, start, 200);
+  assert.equal(w.crossed[nearest(g, 0, -6)], 1);
+});
+
 test('a pin on a park path or next to a highway starts on the nearest street', () => {
   const extra = features.concat([
     { props: { class: 'path', subclass: 'footway', osm_id: 7 }, lines: [line([[0, 30], [0, 60], [30, 60]])] }, // park, not connected
@@ -305,6 +327,24 @@ test('parsePrices reads enabled services in rial', () => {
   assert.deepEqual(q.prices, { 1: 810000 });
   assert.equal(q.names[2], 'اکوپلاس');
   assert.equal(q.ttl, 290);
+  assert.deepEqual(q.etas, {});
+});
+
+test('parsePrices reads the trip minutes Snapp estimates per service', () => {
+  const q = C.parsePrices({ data: { services: [
+    { id: 1, price: { final: 2160000 }, estimation: { eta: [23], time_to_arrive: ['19:12'], distance: 0 } },
+    { id: 24, price: { final: 1260000 }, estimation: { eta: [], time_to_arrive: [], distance: 0 } },
+  ] } });
+  assert.deepEqual(q.etas, { 1: 23 });
+});
+
+test('tripChange compares a suggestion\'s trip minutes with the route as it was', () => {
+  const res = { base: { etas: { 1: 20 } } };
+  assert.equal(C.tripChange(res, { etas: { 1: 17 } }, 1), -3);
+  assert.equal(C.tripChange(res, { etas: { 1: 24 } }, 1), 4);
+  assert.equal(C.tripChange(res, { etas: { 2: 17 } }, 1), null, 'no estimate for this service');
+  assert.equal(C.tripChange({ base: {} }, { etas: { 1: 17 } }, 1), null);
+  assert.equal(C.tripChange(null, null, 1), null);
 });
 
 const tapsiPreview = {
@@ -330,6 +370,19 @@ test('parseTapsiPrices converts toman to rial and reads the default price step',
   assert.equal(q.ttl, 60);
   assert.deepEqual(q.categories.map((c) => c.id), [1, 2]); // delivery is never offered
   assert.deepEqual(C.parseTapsiPrices(tapsiPreview, 2).prices, { 11: 2090000 });
+});
+
+test('parseTapsiPrices reads the trip minutes from the end time Tapsi shows, in Tehran time', () => {
+  const now = Date.UTC(2026, 10, 22, 21, 15, 50); // 00:45:50 in Tehran
+  const json = { data: { tabs: [{ key: 'CAR', items: [
+    { service: { key: 'STANDARD', subtitle: 'پایان سفر: ۰۱:۰۲', prices: [{ passengerShare: 130000 }] } },
+    { service: { key: 'WAIT_AND_SAVE', subtitle: 'تا ۱۰ دقیقه صبر کنید', prices: [{ passengerShare: 120000 }] } },
+  ] }] } };
+  assert.deepEqual(C.parseTapsiPrices(json, 1, now).etas, { 1: 16 }, 'a waiting note is not an end time');
+  assert.equal(C.tapsiTripMinutes('پایان سفر: 00:10', Date.UTC(2026, 10, 22, 20, 20)), 20, 'past midnight');
+  assert.equal(C.tapsiTripMinutes('', now), null);
+  assert.equal(C.tapsiTripMinutes('25:99', now), null);
+  assert.deepEqual(C.parseTapsiPrices(tapsiPreview, 1).etas, {});
 });
 
 test('parseTapsiPrices copes with an unexpected response', () => {

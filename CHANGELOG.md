@@ -4,6 +4,14 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-23
+
+### Added
+- A suggestion card says when its trip is two minutes or more shorter or longer than the route as it was, by the service's own estimate: Snapp's trip minutes, or the end time Tapsi shows. Nothing is stored.
+
+### Fixed
+- A walk to the other side of a boulevard no longer cuts across a ramp, a highway or a railway that runs between its two carriageways at street level. The walk now goes around it, or that point is left out when it is too far.
+
 ## [2.6.2] - 2026-11-22
 
 ### Added
@@ -156,7 +164,8 @@ The first release of these changes. The v2.6.0 tag was never published: its rele
 
 First public release.
 
-[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.6.2...HEAD
+[Unreleased]: https://github.com/MehdiHadizadeh/yeghadam/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.7.0
 [2.6.2]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.2
 [2.6.1]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.6.1
 [2.5.0]: https://github.com/MehdiHadizadeh/yeghadam/releases/tag/v2.5.0

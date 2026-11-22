@@ -198,8 +198,19 @@
       nodes[a].adj.push({ to: b, len, seg });
       nodes[b].adj.push({ to: a, len, seg });
     }
+    const bars = [];
     for (const f of features) {
       const info = edgeInfo(f.props || {});
+      if (isBarrier(f.props || {})) {
+        for (const line of f.lines) {
+          for (let i = 0; i + 1 < line.length; i++) {
+            const a = pr.xy(line[i][0], line[i][1]), b = pr.xy(line[i + 1][0], line[i + 1][1]);
+            const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
+            const t = Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / L2));
+            if (Math.hypot(a[0] + t * dx, a[1] + t * dy) < lim + 30) bars.push([a, b]);
+          }
+        }
+      }
       if (!info.walk && !info.stop) continue;
       for (const line of f.lines) {
         for (let i = 0; i + 1 < line.length; i++) {
@@ -227,8 +238,21 @@
       }
     }
     addJunctions(nodes, segs);
-    addCrossings(nodes, segs);
+    addCrossings(nodes, segs, bars);
     return { pr, center, nodes, segs };
+  }
+
+  // Roads only cars use, at ground level: an assumed crossing never cuts through one. A ramp between the two
+  // carriageways of a boulevard is the usual case. Bridges and tunnels pass over or under the crossing, so they are not barriers.
+  function isBarrier(p) {
+    if (p.brunnel === 'bridge' || p.brunnel === 'tunnel') return false;
+    const cls = String(p.class || '');
+    return yes(p.ramp) || cls === 'motorway' || cls === 'trunk' || cls === 'busway' || cls === 'rail';
+  }
+  // Do segments ab and cd cross?
+  function cuts(a, b, c, d) {
+    const side = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0;
   }
 
   // Vector tiles often drop the shared vertex of a T-junction, leaving the side street's end a metre or two short of
@@ -270,7 +294,7 @@
 
   // Divided roads are two parallel one-way carriageways with no shared nodes between intersections.
   // A pedestrian can cross anywhere, so link each carriageway node to the nearest node on the opposite one.
-  function addCrossings(nodes, segs) {
+  function addCrossings(nodes, segs, bars) {
     const CELL = 30, grid = new Map();
     const divided = [];
     segs.forEach((s, i) => {
@@ -301,6 +325,8 @@
       const key = Math.min(s.a, best.n) + '-' + Math.max(s.a, best.n);
       if (done.has(key)) continue;
       done.add(key);
+      const B = nodes[best.n], ab = [[A.x, A.y], [B.x, B.y]];
+      if ((bars || []).some((r) => cuts(ab[0], ab[1], r[0], r[1]))) continue;
       const pen = Math.max(CROSS_PENALTY[s.info.cls], CROSS_PENALTY[best.cls] || 0);
       // len is the routing cost; m is what the rider actually walks
       const len = best.d + pen;
@@ -474,15 +500,18 @@
     };
   }
   function parsePrices(json) {
-    const prices = {}, names = {};
+    const prices = {}, names = {}, etas = {};
     for (const s of (json && json.data && json.data.services) || []) {
       const id = s.id != null ? s.id : s.service_type;
       if (s.info && s.info.name) names[id] = s.info.name;
       if (s.enabled !== false && s.price && s.price.final > 0) prices[id] = s.price.final;
+      // estimation.eta is the trip's expected minutes from pickup to drop-off, e.g. [23]
+      const eta = s.estimation && Array.isArray(s.estimation.eta) ? s.estimation.eta[0] : null;
+      if (typeof eta === 'number' && eta > 0) etas[id] = eta;
     }
     // categories offered on this route, e.g. [{ id: 1, name }, { id: 2, name }] for car and motorbike
     const categories = ((json && json.data && json.data.categories) || []).map((c) => ({ id: c.id, name: c.name }));
-    return { prices, names, ttl: json && json.data && json.data.ttl, categories };
+    return { prices, names, etas, ttl: json && json.data && json.data.ttl, categories };
   }
 
   /* ---------------- Tapsi price API ---------------- */
@@ -507,9 +536,22 @@
       metadata: { flowType: 'ORIGIN_FIRST', previewType: 'ORIGIN_FIRST', ttpEvents: { destinationSelectedAt: t - 60000, cabSelectedAt: t - 50000, originSelectedAt: t - 1000 } },
     };
   }
-  function parseTapsiPrices(json, category) {
+  // Tapsi gives no trip minutes, only the expected end of the trip as text in Tehran time ("trip ends: 01:02",
+  // in Persian digits).
+  // Minutes from `now` to that time; Iran keeps UTC+3:30 all year.
+  function tapsiTripMinutes(text, now) {
+    const m = /([0-9۰-۹]{1,2}):([0-9۰-۹]{2})/.exec(String(text || ''));
+    if (!m) return null;
+    const num = (s) => +s.replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 0x06f0);
+    const end = num(m[1]) * 60 + num(m[2]);
+    if (!(end >= 0 && end < 1440)) return null;
+    const t = (((now == null ? Date.now() : now) / 60000 + 210) % 1440 + 1440) % 1440;
+    const mins = Math.round((((end - t) % 1440) + 1440) % 1440);
+    return mins > 0 && mins < 600 ? mins : null;
+  }
+  function parseTapsiPrices(json, category, now) {
     const tabs = (json && json.data && Array.isArray(json.data.tabs) && json.data.tabs) || [];
-    const prices = {}, names = {};
+    const prices = {}, names = {}, etas = {};
     for (const tab of tabs) {
       if (tab.key !== TAPSI_TABS[category || 1]) continue;
       for (const it of tab.items || []) {
@@ -519,6 +561,8 @@
         const id = tapsiServiceId(s.key);
         names[id] = TAPSI_SERVICES[s.key] ? TAPSI_SERVICES[s.key][1] : 'سرویس دیگر';
         if (step && step.passengerShare > 0) prices[id] = step.passengerShare * 10;
+        const eta = tapsiTripMinutes(s.subtitle, now);
+        if (eta) etas[id] = eta;
       }
     }
     const categories = [];
@@ -526,7 +570,7 @@
       const tab = tabs.find((t) => t.key === TAPSI_TABS[id]);
       if (tab) categories.push({ id, name: tab.title || (id === 1 ? 'ماشین' : 'موتور') });
     }
-    return { prices, names, ttl: json && json.data && json.data.ttl, categories };
+    return { prices, names, etas, ttl: json && json.data && json.data.ttl, categories };
   }
 
   /* ---------------- settings and Tapsi route helpers ---------------- */
@@ -632,7 +676,7 @@
 
     // Snapp locks a quote for a few minutes per route (points within ~6 m share the lock). `ttl` is the lock's seconds
     // left, so a ttl well below the freshest one seen means the price was fixed earlier.
-    let lastTtl = null;
+    let lastTtl = null, lastEtas = null;
     async function ask(points) {
       if (cancelled()) throw new SearchError('cancel');
       if (res.requests >= maxReq) throw new SearchError('budget');
@@ -642,6 +686,7 @@
       const q = await opts.quote(points);
       Object.assign(res.names, q.names);
       lastTtl = q.ttl == null ? null : q.ttl;
+      lastEtas = q.etas || null;
       if (lastTtl != null) res.freshTtl = Math.max(res.freshTtl || 0, lastTtl);
       return q.prices;
     }
@@ -658,6 +703,7 @@
     async function quoteCand(c, kind, list) {
       try {
         c.prices = await ask(withPoint(c, kind));
+        c.etas = lastEtas;
       } catch (e) {
         if (e.code === 'unavailable') return; // this one point is refused; the base price already worked
         throw e;
@@ -714,6 +760,7 @@
     try {
       res.base = { kind: 'base', lat: res.O.lat, lng: res.O.lng, walk: 0, prices: await ask(pts) };
       res.base.ttl = lastTtl;
+      res.base.etas = lastEtas;
       const ids = Object.keys(res.base.prices).map(Number);
       if (!ids.length) throw new SearchError('noprice');
       if (!res.base.prices[res.sid]) res.sid = ids[0];
@@ -725,6 +772,7 @@
       if (B.origin && res.base.ttl != null && res.freshTtl - res.base.ttl > 45 && res.requests < maxReq - 1) {
         const t = twinOf(po);
         t.prices = await ask(withPoint(t, 'origin'));
+        t.etas = lastEtas;
         t.twin = true;
         res.twin = t;
         res.origins.push(t);
@@ -738,6 +786,7 @@
         p[0] = { lat: bo.lat, lng: bo.lng };
         p[last] = { lat: bd.lat, lng: bd.lng };
         res.combo = { kind: 'both', origin: bo, dest: bd, walk: bo.walk + bd.walk, prices: await ask(p) };
+        res.combo.etas = lastEtas;
         progress(res);
       }
       if (res.requests > 1 && res.requests < maxReq) {
@@ -786,14 +835,22 @@
     }));
   }
 
+  // How many minutes longer (positive) or shorter (negative) the trip from a suggestion is than the route as it was, by
+  // the service's own estimate. Null when either estimate is missing.
+  function tripChange(res, c, sid) {
+    const be = res && res.base && res.base.etas && res.base.etas[sid];
+    const e = c && c.etas && c.etas[sid];
+    return be > 0 && e > 0 ? e - be : null;
+  }
+
   // Normalize Persian label text: drop kashida (U+0640) and ZWNJ, map hamza alef forms to plain alef, Arabic yeh and kaf to Persian.
   const normalizeFa = (s) => String(s || '').replace(/[ـ‌]/g, '').replace(/[أإآ]/g, 'ا').replace(/ي/g, 'ی').replace(/ك/g, 'ک');
 
   return {
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
     pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
-    normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
-    search, cards, priceOf,
+    tapsiTripMinutes, normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
+    search, cards, priceOf, tripChange,
     bestOf, normalizeFa, SearchError,
   };
 });

@@ -1217,6 +1217,9 @@
   .c3{display:flex;align-items:center;gap:6px;margin-top:9px;padding-top:9px;border-top:1px solid rgba(15,18,40,.07)}
   .meta{flex:1;min-width:0;font-size:12.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .meta b{color:var(--ink);font-weight:700}
+  .trip{display:block;margin-top:1px;font-size:11.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis}
+  .trip.up{color:var(--leaf)}
+  .trip.dn{color:var(--warnI)}
   .go{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 12px;border-radius:10px;font-size:13px;font-weight:800;background:var(--ink);color:#fff;flex:none;white-space:nowrap}
   .go svg{width:14px;height:14px;color:var(--lime)}
   .nb{min-height:40px;padding:0 10px;border-radius:10px;font-size:12.5px;font-weight:700;color:var(--mute);flex:none;white-space:nowrap}
@@ -1571,13 +1574,19 @@
     if (c.kind === 'both') return `${placeText(c.origin)} / ${placeText(c.dest)}`;
     return placeText(c) + (c.twin ? ' (قیمت تازه)' : '');
   }
+  // The service's own trip estimate moves in whole minutes, so a change of one minute is noise: only two or more show.
+  function tripText(c) {
+    const d = C.tripChange(state.result, c, sid());
+    if (d == null || Math.abs(d) < 2) return '';
+    return `<span class="trip ${d < 0 ? 'up' : 'dn'}">سفر ${fa(Math.abs(d))} دقیقه ${d < 0 ? 'کوتاه‌تر' : 'طولانی‌تر'}</span>`;
+  }
   function cardHTML(k, i) {
     const c = k.c, sel = c === state.selected ? ' sel' : '';
     // the card is a group; its first row is the button that shows the point on the map, next to dismiss and apply
     return `<div class="card${sel}" data-a="pick" data-k="${esc(c.id)}" role="group" aria-label="پیشنهاد ${fa(i + 1)}">
       <button class="c1" data-a="pick" data-k="${esc(c.id)}" aria-pressed="${c === state.selected}"><span class="n">${fa(i + 1)}</span><span class="sv"><span>${toman(k.saving)} ارزون‌تر</span></span><span class="wk">${ICON.walk}${fa(c.walk)} متر</span></button>
       <div class="c2">${KIND_ICON[c.kind]}<span class="pl"><b>${KIND(c.kind)}:</b> ${esc(placeShort(c))}</span><span class="tag">${TAG[k.tag]}</span></div>
-      <div class="c3"><span class="meta"><b>${toman(k.price)}</b></span>
+      <div class="c3"><span class="meta"><b>${toman(k.price)}</b>${tripText(c)}</span>
         <button class="nb" data-a="dismiss" data-k="${esc(c.id)}" title="این پیشنهاد رو نشون نده">نمی‌رم</button><button class="go" data-a="apply" data-k="${esc(c.id)}">اعمال${ICON.next}</button></div>
     </div>`;
   }
