@@ -198,8 +198,19 @@
       nodes[a].adj.push({ to: b, len, seg });
       nodes[b].adj.push({ to: a, len, seg });
     }
+    const bars = [];
     for (const f of features) {
       const info = edgeInfo(f.props || {});
+      if (isBarrier(f.props || {})) {
+        for (const line of f.lines) {
+          for (let i = 0; i + 1 < line.length; i++) {
+            const a = pr.xy(line[i][0], line[i][1]), b = pr.xy(line[i + 1][0], line[i + 1][1]);
+            const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
+            const t = Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / L2));
+            if (Math.hypot(a[0] + t * dx, a[1] + t * dy) < lim + 30) bars.push([a, b]);
+          }
+        }
+      }
       if (!info.walk && !info.stop) continue;
       for (const line of f.lines) {
         for (let i = 0; i + 1 < line.length; i++) {
@@ -227,8 +238,21 @@
       }
     }
     addJunctions(nodes, segs);
-    addCrossings(nodes, segs);
+    addCrossings(nodes, segs, bars);
     return { pr, center, nodes, segs };
+  }
+
+  // Roads only cars use, at ground level: an assumed crossing never cuts through one. A ramp between the two
+  // carriageways of a boulevard is the usual case. Bridges and tunnels pass over or under the crossing, so they are not barriers.
+  function isBarrier(p) {
+    if (p.brunnel === 'bridge' || p.brunnel === 'tunnel') return false;
+    const cls = String(p.class || '');
+    return yes(p.ramp) || cls === 'motorway' || cls === 'trunk' || cls === 'busway' || cls === 'rail';
+  }
+  // Do segments ab and cd cross?
+  function cuts(a, b, c, d) {
+    const side = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0;
   }
 
   // Vector tiles often drop the shared vertex of a T-junction, leaving the side street's end a metre or two short of
@@ -270,7 +294,7 @@
 
   // Divided roads are two parallel one-way carriageways with no shared nodes between intersections.
   // A pedestrian can cross anywhere, so link each carriageway node to the nearest node on the opposite one.
-  function addCrossings(nodes, segs) {
+  function addCrossings(nodes, segs, bars) {
     const CELL = 30, grid = new Map();
     const divided = [];
     segs.forEach((s, i) => {
@@ -301,6 +325,8 @@
       const key = Math.min(s.a, best.n) + '-' + Math.max(s.a, best.n);
       if (done.has(key)) continue;
       done.add(key);
+      const B = nodes[best.n], ab = [[A.x, A.y], [B.x, B.y]];
+      if ((bars || []).some((r) => cuts(ab[0], ab[1], r[0], r[1]))) continue;
       const pen = Math.max(CROSS_PENALTY[s.info.cls], CROSS_PENALTY[best.cls] || 0);
       // len is the routing cost; m is what the rider actually walks
       const len = best.d + pen;

@@ -45,6 +45,28 @@ test('walking graph crosses a divided boulevard with a penalty', () => {
   assert.equal(w.dist[nearest(200, -100)], Infinity);
 });
 
+test('an assumed boulevard crossing never cuts through a ramp or a highway between the carriageways', () => {
+  const nearest = (g, x, y) => g.nodes.map((n, i) => [i, Math.hypot(n.x - x, n.y - y)]).sort((a, b) => a[1] - b[1])[0][0];
+  // a ramp runs between the carriageways from x = -300 to x = 300: no crossing anywhere, the far side is out of reach
+  const ramp = { props: { class: 'primary', ramp: 1, oneway: 1, osm_id: 8 }, lines: [line([[-300, 0], [300, 0]])] };
+  let g = C.buildGraph(features.concat([ramp]), center, 200);
+  let w = C.walkFrom(g, start, 200);
+  assert.equal(w.crossed[nearest(g, 0, -6)], 0);
+  assert.equal(w.dist[nearest(g, 0, -6)], Infinity);
+  // the ramp only covers x = 20..300: crossing west of it still works, so the far side is reached around it
+  const shortRamp = { props: { class: 'primary', ramp: 1, oneway: 1, osm_id: 8 }, lines: [line([[20, 0], [300, 0]])] };
+  g = C.buildGraph(features.concat([shortRamp]), center, 300);
+  w = C.walkFrom(g, pr.ll(100, 6), 300);
+  const far = nearest(g, 100, -6);
+  assert.equal(w.crossed[far], 1);
+  assert.ok(w.walked[far] > 150, 'walks past the ramp to cross, got ' + w.walked[far]);
+  // a ramp on a bridge passes overhead and does not block the crossing
+  const bridge = { props: { class: 'primary', ramp: 1, brunnel: 'bridge', oneway: 1, osm_id: 8 }, lines: [line([[-300, 0], [300, 0]])] };
+  g = C.buildGraph(features.concat([bridge]), center, 200);
+  w = C.walkFrom(g, start, 200);
+  assert.equal(w.crossed[nearest(g, 0, -6)], 1);
+});
+
 test('a pin on a park path or next to a highway starts on the nearest street', () => {
   const extra = features.concat([
     { props: { class: 'path', subclass: 'footway', osm_id: 7 }, lines: [line([[0, 30], [0, 60], [30, 60]])] }, // park, not connected
