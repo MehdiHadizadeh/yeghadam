@@ -8,6 +8,10 @@
  */
 (() => {
   'use strict';
+  // The Android app hands its bridge key to the page's main frame with this script; calls that change something carry
+  // it. Take it off the page right away.
+  const KEY = typeof window.__yeghadamKey === 'string' ? window.__yeghadamKey : '';
+  try { delete window.__yeghadamKey; } catch (e) {}
   const TAPSI = location.hostname === 'app.tapsi.cab';
   if (window.__YEGHADAM__ || (location.hostname !== 'app.snapp.taxi' && !TAPSI)) return;
   window.__YEGHADAM__ = true;
@@ -100,7 +104,7 @@
   // 0: intro, 1: notice, null: done.
   state.intro = consentVersion() >= NOTICE_V ? null : settings.seenIntro ? 1 : 0;
   state.fromIntro = state.intro === 0;
-  const introOpen = (open) => { try { if (NATIVE && NATIVE.introOpen) NATIVE.introOpen(open); } catch (e) {} };
+  const introOpen = (open) => { try { if (NATIVE && NATIVE.introOpen) NATIVE.introOpen(KEY, open); } catch (e) {} };
 
   function carRoute(r) { return r && Array.isArray(r.points) && r.category === CAR ? r : null; }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -123,7 +127,7 @@
   function pushShared() {
     if (!NATIVE || !NATIVE.setFlag) return;
     for (const k of Object.keys(SHARED)) {
-      try { NATIVE.setFlag(k, SHARED[k].put(settings[k])); } catch (e) {}
+      try { NATIVE.setFlag(KEY, k, SHARED[k].put(settings[k])); } catch (e) {}
     }
   }
   function saveSettings() {
@@ -478,7 +482,7 @@
       const finish = (answer) => { clearTimeout(timer); delete peerWait[id]; resolve(answer); };
       peerWait[id] = finish;
       try {
-        if (NATIVE && NATIVE.peerQuote) NATIVE.peerQuote(id, JSON.stringify(points));
+        if (NATIVE && NATIVE.peerQuote) NATIVE.peerQuote(KEY, id, JSON.stringify(points));
         else window.postMessage({ yeghadam: 'peer-quote', id, points }, location.origin);
       } catch (e) { finish(null); }
     });
@@ -649,7 +653,11 @@
       if (tiles.size > 24) tiles.delete(tiles.keys().next().value);
       const body = (r) => r.arrayBuffer();
       const p = (TAPSI ? tapsiTileUrl(t).then((u) => getWithin(u, { credentials: 'omit' }, body)) : getWithin(TILE_URL + k + '.pbf', {}, body))
-        .then((b) => C.decodeTile(new Uint8Array(b), t));
+        .then((b) => {
+          const u8 = new Uint8Array(b), roads = C.decodeTile(u8, t);
+          // Tapsi keeps street names in their own layer
+          return TAPSI ? C.nameRoads(roads, C.decodeTile(u8, t, 'transportation_name')) : roads;
+        });
       p.catch(() => tiles.delete(k));
       tiles.set(k, p);
     }
@@ -664,10 +672,12 @@
       const map = state.map;
       if (!map) return [];
       try {
-        return map.querySourceFeatures('openmaptiles', { sourceLayer: 'transportation' }).map((f) => ({
+        const read = (layer) => map.querySourceFeatures('openmaptiles', { sourceLayer: layer }).map((f) => ({
           props: f.properties,
           lines: f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [],
         }));
+        const roads = read('transportation');
+        return TAPSI ? C.nameRoads(roads, read('transportation_name')) : roads;
       } catch (e2) { return []; }
     }
   }
@@ -1062,7 +1072,7 @@
   };
   const errText = (code) => (ERR[code] || ERR.unknown) + (code === 'slow' && state.waitMin ? ` (حدود ${fa(state.waitMin)} دقیقه)` : '');
   function notify(msg) {
-    if (NATIVE && NATIVE.toast) { try { NATIVE.toast(msg); return; } catch (e) {} }
+    if (NATIVE && NATIVE.toast) { try { NATIVE.toast(KEY, msg); return; } catch (e) {} }
     state.toast = msg; emit();
     setTimeout(() => { if (state.toast === msg) { state.toast = null; emit(); } }, 2600);
   }
@@ -1721,13 +1731,13 @@
   }
   function acceptNotice() {
     try { localStorage.setItem(CONSENT_KEY, JSON.stringify({ v: NOTICE_V, at: Date.now() })); } catch (e) {}
-    try { if (NATIVE && NATIVE.setConsent) NATIVE.setConsent(NOTICE_V); } catch (e) {}
+    try { if (NATIVE && NATIVE.setConsent) NATIVE.setConsent(KEY, NOTICE_V); } catch (e) {}
     settings.seenIntro = true; saveSettings();
     state.intro = null; introOpen(false); emit();
   }
   // Android closes the app and asks again next time; in the browser the page stays plain Snapp until it reloads.
   function declineNotice() {
-    try { if (NATIVE && NATIVE.decline) { NATIVE.decline(); return; } } catch (e) {}
+    try { if (NATIVE && NATIVE.decline) { NATIVE.decline(KEY); return; } } catch (e) {}
     state.intro = null; state.off = true; introOpen(false); emit();
   }
 
@@ -1932,7 +1942,7 @@
     else if (a === 'peerRefresh') { refreshPeer(); emit(); }
     else if (a === 'peerOpen') {
       const pts = state.route ? state.route.points : null;
-      if (NATIVE && NATIVE.peerOpen) NATIVE.peerOpen(JSON.stringify(pts || []));
+      if (NATIVE && NATIVE.peerOpen) NATIVE.peerOpen(KEY, JSON.stringify(pts || []));
       else window.postMessage({ yeghadam: 'peer-open', points: pts }, location.origin);
     }
     else if (a === 'prefs') { if (state.prefs) closePrefs(); else openPrefs(); }

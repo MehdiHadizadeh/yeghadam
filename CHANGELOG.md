@@ -4,6 +4,12 @@ Notable changes per release. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+- Tapsi suggestions name the street of each point, as Snapp's do. Tapsi's map keeps street names in a layer of their own, which is now read along with the roads.
+
+### Security
+- The Android app takes the calls that change a setting, accept or decline the notice, show a message or reach the other service only from Yeghadam's own script in the page, not from other frames the site embeds.
+
 ## [2.7.0] - 2026-11-23
 
 ### Added

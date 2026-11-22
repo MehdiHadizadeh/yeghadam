@@ -18,8 +18,8 @@ function storage() {
 
 // fetchImpl(url, init) is the network; `stored` is what the page's settings held before it loaded. Returns the sandbox
 // (the page's window) and a log of requests.
-// native: an object to stand in for the Android bridge (YeghadamNative), when given.
-function page(fetchImpl, noAbort, stored, native) {
+// native: an object to stand in for the Android bridge (YeghadamNative), when given; key: the bridge key the app injects.
+function page(fetchImpl, noAbort, stored, native, key) {
   const requests = [];
   const noop = () => {};
   const w = {
@@ -39,6 +39,7 @@ function page(fetchImpl, noAbort, stored, native) {
   w.localStorage.setItem('yeghadam:consent', JSON.stringify({ v: 1 }));
   if (stored) w.localStorage.setItem('yeghadam:settings', JSON.stringify(stored));
   if (native) w.YeghadamNative = native;
+  if (key) w.__yeghadamKey = key;
   vm.runInNewContext(SOURCE, w);
   return { w, requests, usage: () => JSON.parse(w.localStorage.getItem('yeghadam:usage') || '{}') };
 }
@@ -215,17 +216,19 @@ test('automatic search leaves two searches for the rider under the 10-minute lim
 function appFlags(initial) {
   const flags = new Map(Object.entries(initial || {}));
   const ok = { peer: /^(on|off)?$/, depth: /^(quick|full)?$/, budgets: /^((0|100|200|300):(0|100|200|300))?$/ };
+  // like the app: a write without this WebView's key (handed to the page with the script) is ignored
+  const key = 'app-key';
   return {
-    flags,
+    flags, key,
     getFlag: (k) => flags.get(k) || '',
-    setFlag: (k, v) => { if ((ok[k] || /^1?$/).test(v)) flags.set(k, v); },
+    setFlag: (kk, k, v) => { if (kk === key && (ok[k] || /^1?$/).test(v)) flags.set(k, v); },
     consentVersion: () => 1,
   };
 }
 
 test('Android: a page takes the settings the app keeps for both services over its own', () => {
   const app = appFlags({ depth: 'quick', auto: '1', budgets: '100:300' }); // saved from the other service's tab
-  const tapsi = page(() => answer(OK), false, { depth: 'full', budgets: { origin: 200, dest: 200 } }, app).w.__yeghadamDebug.settings();
+  const tapsi = page(() => answer(OK), false, { depth: 'full', budgets: { origin: 200, dest: 200 } }, app, app.key).w.__yeghadamDebug.settings();
   assert.equal(tapsi.depth, 'quick');
   assert.equal(tapsi.auto, true);
   assert.deepEqual(plain(tapsi.budgets), { origin: 100, dest: 300 });
@@ -233,11 +236,11 @@ test('Android: a page takes the settings the app keeps for both services over it
 
 test('Android: a page hands its own settings to the app, and re-reads them when its tab comes forward', () => {
   const app = appFlags();
-  page(() => answer(OK), false, { depth: 'quick', budgets: { origin: 0, dest: 200 } }, app);
+  page(() => answer(OK), false, { depth: 'quick', budgets: { origin: 0, dest: 200 } }, app, app.key);
   assert.equal(app.flags.get('depth'), 'quick');
   assert.equal(app.flags.get('budgets'), '0:200');
-  const other = page(() => answer(OK), false, null, app);
-  app.setFlag('depth', 'full'); // changed in the other tab
+  const other = page(() => answer(OK), false, null, app, app.key);
+  app.setFlag(app.key, 'depth', 'full'); // changed in the other tab
   other.w.__yeghadamFocus();
   assert.equal(other.w.__yeghadamDebug.settings().depth, 'full');
 });
@@ -245,7 +248,7 @@ test('Android: a page hands its own settings to the app, and re-reads them when 
 test('Android: values the app does not know fall back to the defaults', () => {
   const app = appFlags();
   app.flags.set('depth', 'huge'); app.flags.set('budgets', '999:5');
-  const s = page(() => answer(OK), false, null, app).w.__yeghadamDebug.settings();
+  const s = page(() => answer(OK), false, null, app, app.key).w.__yeghadamDebug.settings();
   assert.equal(s.depth, 'full');
   assert.deepEqual(plain(s.budgets), { origin: 200, dest: 200 });
 });

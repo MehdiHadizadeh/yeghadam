@@ -43,6 +43,9 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 
 /**
  * Hosts the Snapp and Tapsi passenger web apps (app.snapp.taxi, app.tapsi.cab), one WebView each behind a
@@ -74,6 +77,20 @@ public class MainActivity extends Activity {
     private String pendingRoute; // sanitized route JSON waiting for Snapp's start page to load
     private WebView web; // the visible one
     private String script;
+    /**
+     * One random key per service WebView. The script is injected into the page's main frame with its key; every bridge
+     * call that changes something must carry it. Frames embedded in the page (ads, analytics) see the same bridge object
+     * but cannot read the main frame's variables, so they cannot act through it.
+     */
+    private final String[] keys = {newKey(), newKey()};
+
+    private static String newKey() {
+        byte[] b = new byte[16];
+        new SecureRandom().nextBytes(b);
+        StringBuilder out = new StringBuilder();
+        for (byte x : b) out.append(String.format("%02x", x));
+        return out.toString();
+    }
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -450,7 +467,7 @@ public class MainActivity extends Activity {
         String js = "(async function(){var n=0;while(!window.__yeghadamPeerQuote&&n<40){await new Promise(function(r){setTimeout(r,500)});n++}"
                 + "var a={status:'closed'};"
                 + "if(window.__yeghadamPeerQuote){try{a=await window.__yeghadamPeerQuote(" + points + ")}catch(e){a={status:'none'}}}"
-                + "YeghadamNative.peerResult(" + id + ",JSON.stringify(a))})()";
+                + "YeghadamNative.peerResult(" + JSONObject.quote(keys[other]) + "," + id + ",JSON.stringify(a))})()";
         target.evaluateJavascript(js, null);
     }
 
@@ -636,8 +653,9 @@ public class MainActivity extends Activity {
     }
 
     private void inject(WebView v) {
-        if (script != null && v != null) {
-            v.evaluateJavascript(script, null);
+        int index = v == webs[0] ? 0 : v == webs[1] ? 1 : -1;
+        if (script != null && index >= 0) {
+            v.evaluateJavascript("window.__yeghadamKey=" + JSONObject.quote(keys[index]) + ";" + script, null);
         }
     }
 
@@ -835,8 +853,9 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Helpers exposed to the page as window.YeghadamNative. Every script on the page can call these, including
-     * third-party ones the site loads, so the bridge stays limited to harmless calls.
+     * Helpers exposed to the page as window.YeghadamNative. Every frame on the page can reach this object, including
+     * third-party ones the site loads, so the bridge stays limited to harmless calls, and those that change something
+     * also need the key only the injected script has (see keys).
      */
     private class Bridge {
         private final int index; // which service's WebView this bridge belongs to
@@ -845,12 +864,18 @@ public class MainActivity extends Activity {
             this.index = index;
         }
 
+        /** Whether a call comes from the script in the main frame, which alone holds this WebView's key. */
+        private boolean ok(String key) {
+            return key != null && MessageDigest.isEqual(key.getBytes(StandardCharsets.UTF_8), keys[index].getBytes(StandardCharsets.UTF_8));
+        }
+
         /**
          * The page asks for the other service's price of a route. Nothing from the page reaches a script: the points
          * are parsed and rebuilt here, and the other WebView answers with its own session.
          */
         @JavascriptInterface
-        public void peerQuote(final int id, final String pointsJson) {
+        public void peerQuote(String key, final int id, final String pointsJson) {
+            if (!ok(key)) return;
             final String points = cleanPoints(pointsJson);
             runOnUiThread(new Runnable() {
                 @Override
@@ -864,7 +889,8 @@ public class MainActivity extends Activity {
 
         /** The rider asks to open the other service with this route (an empty list: just switch to it). */
         @JavascriptInterface
-        public void peerOpen(final String pointsJson) {
+        public void peerOpen(String key, final String pointsJson) {
+            if (!ok(key)) return;
             final String points = cleanPoints(pointsJson);
             runOnUiThread(new Runnable() {
                 @Override
@@ -876,7 +902,8 @@ public class MainActivity extends Activity {
 
         /** The other WebView's answer. Only a status and a price are forwarded. */
         @JavascriptInterface
-        public void peerResult(final int id, final String json) {
+        public void peerResult(String key, final int id, final String json) {
+            if (!ok(key)) return;
             final String clean = cleanAnswer(json);
             runOnUiThread(new Runnable() {
                 @Override
@@ -896,8 +923,8 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void setFlag(String name, String value) {
-            if (!isSharedFlag(name) || value == null || !validFlag(name, value)) return;
+        public void setFlag(String key, String name, String value) {
+            if (!ok(key) || !isSharedFlag(name) || value == null || !validFlag(name, value)) return;
             getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putString("flag_" + name, value).apply();
         }
 
@@ -908,14 +935,16 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void setConsent(int version) {
+        public void setConsent(String key, int version) {
+            if (!ok(key)) return;
             if (version != NOTICE_VERSION) return; // only the notice this build shows can be accepted
             getSharedPreferences("yeghadam", MODE_PRIVATE).edit().putInt("consent", version).apply();
         }
 
         /** The rider declined the notice: close without remembering it, so it is asked again next time. */
         @JavascriptInterface
-        public void decline() {
+        public void decline(String key) {
+            if (!ok(key)) return;
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
@@ -926,7 +955,8 @@ public class MainActivity extends Activity {
 
         /** The first-run intro is full-screen navy: match the system bars while it is open. */
         @JavascriptInterface
-        public void introOpen(final boolean open) {
+        public void introOpen(String key, final boolean open) {
+            if (!ok(key)) return;
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
@@ -947,7 +977,8 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public void toast(final String text) {
+        public void toast(String key, final String text) {
+            if (!ok(key)) return;
             if (text == null || text.isEmpty() || text.length() > 200) return; // a null text crashes Toast.show() on Android 11+
             runOnUiThread(new Runnable() {
                 @Override
