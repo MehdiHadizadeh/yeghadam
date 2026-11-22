@@ -102,6 +102,20 @@ test('map tiles that never answer do not hold up the search', { timeout: 10000 }
   assert.ok(tile.init.signal.aborted, 'the stalled tile request was aborted');
 });
 
+test('a search keeps price and trip-time changes on the device, without places', { timeout: 20000 }, async () => {
+  const withEta = { data: { services: [{ id: 1, enabled: true, price: { final: 850000 }, info: { name: 'اسنپ' }, estimation: { eta: [20] } }] } };
+  const p = page((url) => (url.includes('/api/v3/price') ? answer(withEta) : Promise.reject(new Error('no tiles'))), false, { depth: 'quick' });
+  const dbg = p.w.__yeghadamDebug;
+  dbg.state.route = { points: ROUTE, category: 1, t: 0 };
+  await dbg.run();
+  const stored = p.w.localStorage.getItem('yeghadam:eta');
+  const { stats, log } = plain(dbg.eta());
+  assert.equal(log.length, 1);
+  assert.ok(log[0].rows.length > 0);
+  assert.equal(stats.points, log[0].rows.length);
+  assert.ok(!/35\.7|51\.4/.test(stored), 'no coordinates stored');
+});
+
 test('the fallback pin tap skips controls outside the map, whatever their text', () => {
   const tappable = page(() => answer(OK)).w.__yeghadamDebug.pinTappable;
   const el = (control, text) => ({ closest: () => (control ? { textContent: text || '' } : null) });

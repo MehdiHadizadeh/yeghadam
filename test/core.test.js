@@ -305,6 +305,41 @@ test('parsePrices reads enabled services in rial', () => {
   assert.deepEqual(q.prices, { 1: 810000 });
   assert.equal(q.names[2], 'اکوپلاس');
   assert.equal(q.ttl, 290);
+  assert.deepEqual(q.etas, {});
+});
+
+test('parsePrices reads the trip minutes Snapp estimates per service', () => {
+  const q = C.parsePrices({ data: { services: [
+    { id: 1, price: { final: 2160000 }, estimation: { eta: [23], time_to_arrive: ['19:12'], distance: 0 } },
+    { id: 24, price: { final: 1260000 }, estimation: { eta: [], time_to_arrive: [], distance: 0 } },
+  ] } });
+  assert.deepEqual(q.etas, { 1: 23 });
+});
+
+test('etaEntry keeps price and trip-time changes without places, etaStats sums them up', () => {
+  const pt = (kind, walk, price, eta, crossed) => ({ kind, walk, crossed, lat: 35.7, lng: 51.4, prices: { 1: price }, etas: { 1: eta } });
+  const res = {
+    at: Date.UTC(2026, 10, 22, 15), sid: 1, drift: 0,
+    base: { prices: { 1: 1000000 }, etas: { 1: 20 } },
+    origins: [pt('origin', 80, 900000, 18, true), pt('origin', 40, 1000000, 20, false), { kind: 'origin', walk: 60, prices: {} }],
+    dests: [pt('dest', 120, 1050000, 23, false)],
+  };
+  const e = C.etaEntry(res);
+  assert.deepEqual(e.rows, [
+    { k: 'o', w: 80, x: 1, dp: -10000, de: -2 },
+    { k: 'o', w: 40, x: 0, dp: 0, de: 0 },
+    { k: 'd', w: 120, x: 0, dp: 5000, de: 3 },
+  ]);
+  assert.ok(!/35\.7|51\.4/.test(JSON.stringify(e)), 'no coordinates');
+  assert.equal(C.etaEntry({ ...res, base: { prices: { 1: 1000000 } } }), null, 'no base minutes, nothing to compare');
+
+  const s = C.etaStats([e, { ...e, lock: 1 }]);
+  assert.equal(s.searches, 1, 'a search with a locked base is left out');
+  assert.equal(s.points, 3);
+  assert.deepEqual(s.shorter, { n: 1, cheaper: 1, share: 100 });
+  assert.deepEqual(s.longer, { n: 1, cheaper: 0, share: 0 });
+  assert.ok(s.correlation > 0.9, `correlation ${s.correlation}`);
+  assert.equal(C.etaStats([]).correlation, null);
 });
 
 const tapsiPreview = {

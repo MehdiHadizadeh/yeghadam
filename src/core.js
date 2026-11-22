@@ -474,15 +474,18 @@
     };
   }
   function parsePrices(json) {
-    const prices = {}, names = {};
+    const prices = {}, names = {}, etas = {};
     for (const s of (json && json.data && json.data.services) || []) {
       const id = s.id != null ? s.id : s.service_type;
       if (s.info && s.info.name) names[id] = s.info.name;
       if (s.enabled !== false && s.price && s.price.final > 0) prices[id] = s.price.final;
+      // estimation.eta is the trip's expected minutes from pickup to drop-off, e.g. [23]
+      const eta = s.estimation && Array.isArray(s.estimation.eta) ? s.estimation.eta[0] : null;
+      if (typeof eta === 'number' && eta > 0) etas[id] = eta;
     }
     // categories offered on this route, e.g. [{ id: 1, name }, { id: 2, name }] for car and motorbike
     const categories = ((json && json.data && json.data.categories) || []).map((c) => ({ id: c.id, name: c.name }));
-    return { prices, names, ttl: json && json.data && json.data.ttl, categories };
+    return { prices, names, etas, ttl: json && json.data && json.data.ttl, categories };
   }
 
   /* ---------------- Tapsi price API ---------------- */
@@ -632,7 +635,7 @@
 
     // Snapp locks a quote for a few minutes per route (points within ~6 m share the lock). `ttl` is the lock's seconds
     // left, so a ttl well below the freshest one seen means the price was fixed earlier.
-    let lastTtl = null;
+    let lastTtl = null, lastEtas = null;
     async function ask(points) {
       if (cancelled()) throw new SearchError('cancel');
       if (res.requests >= maxReq) throw new SearchError('budget');
@@ -642,6 +645,7 @@
       const q = await opts.quote(points);
       Object.assign(res.names, q.names);
       lastTtl = q.ttl == null ? null : q.ttl;
+      lastEtas = q.etas || null;
       if (lastTtl != null) res.freshTtl = Math.max(res.freshTtl || 0, lastTtl);
       return q.prices;
     }
@@ -658,6 +662,7 @@
     async function quoteCand(c, kind, list) {
       try {
         c.prices = await ask(withPoint(c, kind));
+        c.etas = lastEtas;
       } catch (e) {
         if (e.code === 'unavailable') return; // this one point is refused; the base price already worked
         throw e;
@@ -714,6 +719,7 @@
     try {
       res.base = { kind: 'base', lat: res.O.lat, lng: res.O.lng, walk: 0, prices: await ask(pts) };
       res.base.ttl = lastTtl;
+      res.base.etas = lastEtas;
       const ids = Object.keys(res.base.prices).map(Number);
       if (!ids.length) throw new SearchError('noprice');
       if (!res.base.prices[res.sid]) res.sid = ids[0];
@@ -725,6 +731,7 @@
       if (B.origin && res.base.ttl != null && res.freshTtl - res.base.ttl > 45 && res.requests < maxReq - 1) {
         const t = twinOf(po);
         t.prices = await ask(withPoint(t, 'origin'));
+        t.etas = lastEtas;
         t.twin = true;
         res.twin = t;
         res.origins.push(t);
@@ -786,6 +793,46 @@
     }));
   }
 
+  /* ---------------- trip time against price ---------------- */
+  // Does a shorter trip go with a lower price? Each quoted point of a search gives one row: walk, side of the road and
+  // the change in price (toman) and in the trip's expected minutes against the route as it was. No places or
+  // coordinates, so a log of these says nothing about where the rider went.
+  function etaEntry(res, at) {
+    const sid = res.sid, base = res.base;
+    const bp = priceOf(base, sid), be = base && base.etas && base.etas[sid];
+    if (!isFinite(bp) || !(be > 0)) return null;
+    const rows = [];
+    for (const c of res.origins.concat(res.dests)) {
+      const p = priceOf(c, sid), e = c.etas && c.etas[sid];
+      if (!isFinite(p) || !(e > 0)) continue;
+      rows.push({ k: c.kind === 'origin' ? 'o' : 'd', w: c.walk, x: c.crossed ? 1 : 0, dp: Math.round((p - bp) / 10), de: e - be });
+    }
+    if (!rows.length) return null;
+    const d = new Date(at || res.at);
+    return { h: d.getHours(), wd: d.getDay(), sid, be, lock: res.baseLock ? 1 : 0, drift: Math.round((res.drift || 0) / 10), rows };
+  }
+  // Summary over logged searches: how often a point with a shorter trip was cheaper, and the correlation of the two
+  // changes. Searches whose base price was locked from earlier are left out: their price differences mix in time.
+  function etaStats(log) {
+    const rows = [];
+    for (const e of log || []) if (e && !e.lock && Array.isArray(e.rows)) rows.push(...e.rows);
+    const group = (f) => {
+      const g = rows.filter(f), cheaper = g.filter((r) => r.dp <= -MIN_SAVING / 10).length;
+      return { n: g.length, cheaper, share: g.length ? Math.round((100 * cheaper) / g.length) : null };
+    };
+    let r = null;
+    if (rows.length > 2) {
+      const n = rows.length, mx = rows.reduce((s, x) => s + x.de, 0) / n, my = rows.reduce((s, x) => s + x.dp, 0) / n;
+      let sxy = 0, sxx = 0, syy = 0;
+      for (const x of rows) { sxy += (x.de - mx) * (x.dp - my); sxx += (x.de - mx) ** 2; syy += (x.dp - my) ** 2; }
+      r = sxx && syy ? Math.round((100 * sxy) / Math.sqrt(sxx * syy)) / 100 : null;
+    }
+    return {
+      searches: (log || []).filter((e) => e && !e.lock).length, points: rows.length, correlation: r,
+      shorter: group((x) => x.de < 0), same: group((x) => x.de === 0), longer: group((x) => x.de > 0),
+    };
+  }
+
   // Normalize Persian label text: drop kashida (U+0640) and ZWNJ, map hamza alef forms to plain alef, Arabic yeh and kaf to Persian.
   const normalizeFa = (s) => String(s || '').replace(/[ـ‌]/g, '').replace(/[أإآ]/g, 'ا').replace(/ي/g, 'ی').replace(/ك/g, 'ک');
 
@@ -793,7 +840,7 @@
     MIN_SAVING, distance, projector, direction, tileOf, tilesAround, decodeTile, edgeInfo, buildGraph, walkFrom,
     pickCandidates, refineAround, toCandidate, gridCandidates, priceBody, parsePrices, tapsiPriceBody, parseTapsiPrices,
     normalizeBudgets, tapsiRoutePoints, tapsiRouteSearch, reachText, limitWait,
-    search, cards, priceOf,
+    search, cards, priceOf, etaEntry, etaStats,
     bestOf, normalizeFa, SearchError,
   };
 });
